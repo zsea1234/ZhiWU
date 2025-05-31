@@ -22,49 +22,56 @@ import {
   Tv,
   Refrigerator,
   WashingMachine,
+  Users,
+  Star,
+  Mail,
 } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
 import { useParams } from "next/navigation"
+import { Calendar as CalendarComponent } from "@/components/ui/calendar"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 
 // Mock property data
 const mockProperty = {
   id: 1,
-  title: "精装两居室 近地铁 拎包入住",
-  address: "北京市朝阳区幸福路123号 幸福小区 1号楼 2单元 301室",
-  rent: 5000,
-  deposit: 10000,
-  bedrooms: 2,
-  living_rooms: 1,
+  title: "阳光花园 2室1厅",
+  address: "北京市朝阳区阳光花园小区",
+  price: 5000,
+  area: 80,
+  rooms: 2,
   bathrooms: 1,
-  area: 85,
-  floor: 3,
-  total_floors: 6,
-  year_built: 2010,
-  available_date: "2025-06-01",
-  description:
-    "本房源位于朝阳区核心地段，交通便利，距离地铁站仅500米。房屋精装修，家具家电齐全，可拎包入住。小区环境优美，配套设施完善，适合年轻白领居住。",
-  images: [
-    "/placeholder.svg?height=400&width=600",
-    "/placeholder.svg?height=400&width=600",
-    "/placeholder.svg?height=400&width=600",
-    "/placeholder.svg?height=400&width=600",
+  maxTenants: 3,
+  status: "available" as const,
+  images: ["/mock/property1.jpg", "/mock/property2.jpg", "/mock/property3.jpg"],
+  description: "这是一套位于阳光花园小区的精装两居室，采光充足，交通便利。小区环境优美，配套设施完善，周边有超市、学校、医院等生活设施。",
+  facilities: [
+    "空调",
+    "热水器",
+    "洗衣机",
+    "冰箱",
+    "电视",
+    "宽带",
+    "衣柜",
+    "床",
+    "沙发",
+    "餐桌",
   ],
-  amenities: ["空调", "洗衣机", "冰箱", "WIFI", "电视", "停车位"],
-  rules: ["禁止吸烟", "可协商养小型宠物", "保持安静"],
+  rules: [
+    "禁止养宠物",
+    "禁止吸烟",
+    "禁止大声喧哗",
+    "保持房屋整洁",
+    "按时缴纳房租",
+  ],
   landlord: {
-    id: 12,
-    username: "李房东",
-    avatar: "/placeholder.svg?height=40&width=40",
-    phone: "138****8888",
-    response_rate: "98%",
-    response_time: "1小时内",
-  },
-  surrounding: {
-    transportation: ["地铁10号线 500米", "公交站 200米"],
-    shopping: ["华联超市 300米", "万达广场 1公里"],
-    education: ["幸福小学 800米", "朝阳中学 1.2公里"],
-    medical: ["社区医院 600米", "朝阳医院 2公里"],
+    name: "张先生",
+    phone: "13800138000",
+    email: "landlord@example.com",
+    rating: 4.8,
   },
 }
 
@@ -72,9 +79,14 @@ export default function PropertyDetailPage() {
   const params = useParams()
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   const [isFavorited, setIsFavorited] = useState(false)
-
-  // In a real app, you would fetch property data based on params.id
-  const property = mockProperty
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date())
+  const [selectedTime, setSelectedTime] = useState("")
+  const [viewingRequest, setViewingRequest] = useState({
+    name: "",
+    phone: "",
+    email: "",
+    message: "",
+  })
 
   const amenityIcons: { [key: string]: any } = {
     空调: AirVent,
@@ -83,6 +95,17 @@ export default function PropertyDetailPage() {
     WIFI: Wifi,
     电视: Tv,
     停车位: Car,
+  }
+
+  const handleSubmitViewingRequest = (e: React.FormEvent) => {
+    e.preventDefault()
+    // TODO: 实现预约看房请求提交逻辑
+    console.log("提交预约看房请求:", {
+      propertyId: params.id,
+      date: selectedDate,
+      time: selectedTime,
+      ...viewingRequest,
+    })
   }
 
   return (
@@ -117,14 +140,14 @@ export default function PropertyDetailPage() {
             <Card className="overflow-hidden">
               <div className="relative">
                 <Image
-                  src={property.images[currentImageIndex] || "/placeholder.svg"}
-                  alt={property.title}
+                  src={mockProperty.images[currentImageIndex] || "/placeholder.svg"}
+                  alt={mockProperty.title}
                   width={600}
                   height={400}
                   className="w-full h-96 object-cover"
                 />
                 <div className="absolute bottom-4 left-4 flex space-x-2">
-                  {property.images.map((_, index) => (
+                  {mockProperty.images.map((_, index) => (
                     <button
                       key={index}
                       onClick={() => setCurrentImageIndex(index)}
@@ -138,7 +161,7 @@ export default function PropertyDetailPage() {
               {/* Thumbnail Gallery */}
               <div className="p-4">
                 <div className="grid grid-cols-4 gap-2">
-                  {property.images.map((image, index) => (
+                  {mockProperty.images.map((image, index) => (
                     <button
                       key={index}
                       onClick={() => setCurrentImageIndex(index)}
@@ -161,10 +184,10 @@ export default function PropertyDetailPage() {
             {/* Property Details */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-2xl">{property.title}</CardTitle>
+                <CardTitle className="text-2xl">{mockProperty.title}</CardTitle>
                 <CardDescription className="flex items-center text-base">
                   <MapPin className="h-4 w-4 mr-2" />
-                  {property.address}
+                  {mockProperty.address}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -174,27 +197,24 @@ export default function PropertyDetailPage() {
                     <Bed className="h-6 w-6 mx-auto mb-2 text-gray-600" />
                     <p className="text-sm text-gray-600">户型</p>
                     <p className="font-medium">
-                      {property.bedrooms}室{property.living_rooms}厅{property.bathrooms}卫
+                      {mockProperty.rooms}室{mockProperty.bathrooms}卫
                     </p>
                   </div>
                   <div className="text-center p-4 bg-gray-50 rounded-lg">
                     <Square className="h-6 w-6 mx-auto mb-2 text-gray-600" />
                     <p className="text-sm text-gray-600">面积</p>
-                    <p className="font-medium">{property.area}㎡</p>
+                    <p className="font-medium">{mockProperty.area}㎡</p>
                   </div>
                   <div className="text-center p-4 bg-gray-50 rounded-lg">
                     <div className="w-6 h-6 mx-auto mb-2 bg-gray-600 rounded text-white text-xs flex items-center justify-center">
-                      {property.floor}
+                      {mockProperty.maxTenants}
                     </div>
-                    <p className="text-sm text-gray-600">楼层</p>
-                    <p className="font-medium">
-                      {property.floor}/{property.total_floors}层
-                    </p>
+                    <p className="text-sm text-gray-600">可入住人数</p>
                   </div>
                   <div className="text-center p-4 bg-gray-50 rounded-lg">
                     <Calendar className="h-6 w-6 mx-auto mb-2 text-gray-600" />
                     <p className="text-sm text-gray-600">可入住</p>
-                    <p className="font-medium">{property.available_date}</p>
+                    <p className="font-medium">{mockProperty.status === "available" ? "随时入住" : "已租"}</p>
                   </div>
                 </div>
 
@@ -204,13 +224,9 @@ export default function PropertyDetailPage() {
                     <div>
                       <p className="text-sm text-gray-600 mb-1">月租金</p>
                       <p className="text-3xl font-bold text-blue-600">
-                        ¥{property.rent.toLocaleString()}
+                        ¥{mockProperty.price.toLocaleString()}
                         <span className="text-lg text-gray-600">/月</span>
                       </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm text-gray-600 mb-1">押金</p>
-                      <p className="text-xl font-medium">¥{property.deposit.toLocaleString()}</p>
                     </div>
                   </div>
                 </div>
@@ -218,19 +234,19 @@ export default function PropertyDetailPage() {
                 {/* Description */}
                 <div className="mb-6">
                   <h3 className="text-lg font-semibold mb-3">房源描述</h3>
-                  <p className="text-gray-700 leading-relaxed">{property.description}</p>
+                  <p className="text-gray-700 leading-relaxed">{mockProperty.description}</p>
                 </div>
 
                 {/* Amenities */}
                 <div className="mb-6">
                   <h3 className="text-lg font-semibold mb-3">房屋设施</h3>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    {property.amenities.map((amenity, index) => {
-                      const IconComponent = amenityIcons[amenity] || Wifi
+                    {mockProperty.facilities.map((facility, index) => {
+                      const IconComponent = amenityIcons[facility] || Wifi
                       return (
                         <div key={index} className="flex items-center space-x-2 p-3 bg-gray-50 rounded-lg">
                           <IconComponent className="h-5 w-5 text-gray-600" />
-                          <span className="text-sm">{amenity}</span>
+                          <span className="text-sm">{facility}</span>
                         </div>
                       )
                     })}
@@ -239,9 +255,9 @@ export default function PropertyDetailPage() {
 
                 {/* Rules */}
                 <div>
-                  <h3 className="text-lg font-semibold mb-3">租赁规则</h3>
+                  <h3 className="text-lg font-semibold mb-3">入住规则</h3>
                   <div className="space-y-2">
-                    {property.rules.map((rule, index) => (
+                    {mockProperty.rules.map((rule, index) => (
                       <div key={index} className="flex items-center space-x-2">
                         <div className="w-2 h-2 bg-blue-600 rounded-full" />
                         <span className="text-sm text-gray-700">{rule}</span>
@@ -267,42 +283,22 @@ export default function PropertyDetailPage() {
                   </TabsList>
                   <TabsContent value="transportation" className="mt-4">
                     <div className="space-y-2">
-                      {property.surrounding.transportation.map((item, index) => (
-                        <div key={index} className="flex items-center space-x-2">
-                          <div className="w-2 h-2 bg-green-600 rounded-full" />
-                          <span className="text-sm">{item}</span>
-                        </div>
-                      ))}
+                      {/* Add transportation-related content here */}
                     </div>
                   </TabsContent>
                   <TabsContent value="shopping" className="mt-4">
                     <div className="space-y-2">
-                      {property.surrounding.shopping.map((item, index) => (
-                        <div key={index} className="flex items-center space-x-2">
-                          <div className="w-2 h-2 bg-blue-600 rounded-full" />
-                          <span className="text-sm">{item}</span>
-                        </div>
-                      ))}
+                      {/* Add shopping-related content here */}
                     </div>
                   </TabsContent>
                   <TabsContent value="education" className="mt-4">
                     <div className="space-y-2">
-                      {property.surrounding.education.map((item, index) => (
-                        <div key={index} className="flex items-center space-x-2">
-                          <div className="w-2 h-2 bg-purple-600 rounded-full" />
-                          <span className="text-sm">{item}</span>
-                        </div>
-                      ))}
+                      {/* Add education-related content here */}
                     </div>
                   </TabsContent>
                   <TabsContent value="medical" className="mt-4">
                     <div className="space-y-2">
-                      {property.surrounding.medical.map((item, index) => (
-                        <div key={index} className="flex items-center space-x-2">
-                          <div className="w-2 h-2 bg-red-600 rounded-full" />
-                          <span className="text-sm">{item}</span>
-                        </div>
-                      ))}
+                      {/* Add medical-related content here */}
                     </div>
                   </TabsContent>
                 </Tabs>
@@ -320,43 +316,42 @@ export default function PropertyDetailPage() {
               <CardContent>
                 <div className="flex items-center space-x-4 mb-4">
                   <Avatar className="h-12 w-12">
-                    <AvatarImage src={property.landlord.avatar || "/placeholder.svg"} />
-                    <AvatarFallback>{property.landlord.username[0]}</AvatarFallback>
+                    <AvatarImage src="/placeholder.svg" />
+                    <AvatarFallback>{mockProperty.landlord.name[0]}</AvatarFallback>
                   </Avatar>
                   <div>
-                    <p className="font-medium">{property.landlord.username}</p>
-                    <p className="text-sm text-gray-600">认证房东</p>
+                    <p className="font-medium">{mockProperty.landlord.name}</p>
+                    <div className="flex items-center text-sm text-gray-500">
+                      <Star className="w-4 h-4 text-yellow-400 mr-1" />
+                      {mockProperty.landlord.rating}
+                    </div>
                   </div>
                 </div>
 
                 <div className="space-y-3 mb-6">
                   <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">回复率</span>
-                    <span className="text-sm font-medium">{property.landlord.response_rate}</span>
+                    <span className="text-sm text-gray-600">联系电话</span>
+                    <span className="text-sm font-medium">{mockProperty.landlord.phone}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">回复时间</span>
-                    <span className="text-sm font-medium">{property.landlord.response_time}</span>
+                    <span className="text-sm text-gray-600">电子邮箱</span>
+                    <span className="text-sm font-medium">{mockProperty.landlord.email}</span>
                   </div>
                 </div>
 
                 <div className="space-y-3">
-                  <Link href={`/properties/${property.id}/book`}>
+                  <Link href={`/properties/${mockProperty.id}/book`}>
                     <Button className="w-full">
                       <Calendar className="h-4 w-4 mr-2" />
                       预约看房
                     </Button>
                   </Link>
-                  <Link href={`/messages/chat/${property.landlord.id}`}>
+                  <Link href={`/messages/chat/${mockProperty.id}`}>
                     <Button variant="outline" className="w-full">
                       <MessageSquare className="h-4 w-4 mr-2" />
                       联系房东
                     </Button>
                   </Link>
-                  <Button variant="outline" className="w-full">
-                    <Phone className="h-4 w-4 mr-2" />
-                    {property.landlord.phone}
-                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -394,6 +389,89 @@ export default function PropertyDetailPage() {
                   <p>• 通过平台支付更安全</p>
                   <p>• 如遇问题请及时联系客服</p>
                 </div>
+              </CardContent>
+            </Card>
+
+            {/* Appointment Dialog */}
+            <Card>
+              <CardHeader>
+                <CardTitle>预约看房</CardTitle>
+                <CardDescription>选择您方便的时间，我们会尽快与您联系</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleSubmitViewingRequest} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>选择日期</Label>
+                    <CalendarComponent
+                      mode="single"
+                      selected={selectedDate}
+                      onSelect={setSelectedDate}
+                      className="rounded-md border"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>选择时间</Label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {["上午", "下午", "晚上"].map((time) => (
+                        <Button
+                          key={time}
+                          type="button"
+                          variant={selectedTime === time ? "default" : "outline"}
+                          onClick={() => setSelectedTime(time)}
+                        >
+                          {time}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="name">您的姓名</Label>
+                    <Input
+                      id="name"
+                      value={viewingRequest.name}
+                      onChange={(e) => setViewingRequest((prev) => ({ ...prev, name: e.target.value }))}
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="phone">联系电话</Label>
+                    <Input
+                      id="phone"
+                      type="tel"
+                      value={viewingRequest.phone}
+                      onChange={(e) => setViewingRequest((prev) => ({ ...prev, phone: e.target.value }))}
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="email">电子邮箱</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      value={viewingRequest.email}
+                      onChange={(e) => setViewingRequest((prev) => ({ ...prev, email: e.target.value }))}
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="message">留言（选填）</Label>
+                    <Textarea
+                      id="message"
+                      value={viewingRequest.message}
+                      onChange={(e) => setViewingRequest((prev) => ({ ...prev, message: e.target.value }))}
+                      placeholder="有什么特殊要求或问题都可以在这里说明"
+                    />
+                  </div>
+
+                  <Button type="submit" className="w-full">
+                    提交预约
+                  </Button>
+                </form>
               </CardContent>
             </Card>
           </div>

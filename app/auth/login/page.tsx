@@ -31,21 +31,31 @@ export default function LoginPage() {
 
     try {
       // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1500))
+      await new Promise((resolve) => setTimeout(resolve, 1000))
 
       // Mock successful login
-      localStorage.setItem("auth_token", "mock_jwt_token")
-      
-      // 根据邮箱判断角色
-      let role = "tenant"
-      if (formData.username_or_email === "landlord@demo.com") {
-        role = "landlord"
-      } else if (formData.username_or_email === "admin@demo.com") {
-        role = "admin"
+      const mockResponse = {
+        token: "mock_token",
+        user: {
+          id: 1,
+          username: formData.username_or_email,
+          role: formData.username_or_email.includes("admin") ? "admin" : 
+                formData.username_or_email.includes("landlord") ? "landlord" : "tenant"
+        }
       }
-      localStorage.setItem("user_role", role)
 
-      router.push("/dashboard")
+      // Store auth data
+      localStorage.setItem("auth_token", mockResponse.token)
+      localStorage.setItem("user_role", mockResponse.user.role)
+
+      // Redirect based on role
+      if (mockResponse.user.role === "admin") {
+        router.push("/dashboard/admin")
+      } else if (mockResponse.user.role === "landlord") {
+        router.push("/dashboard/landlord")
+      } else {
+        router.push("/dashboard/tenant")
+      }
     } catch (err) {
       setError("登录失败，请检查用户名和密码")
     } finally {

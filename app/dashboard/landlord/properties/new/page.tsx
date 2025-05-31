@@ -78,7 +78,7 @@ export default function NewPropertyPage() {
       <header className="bg-white border-b">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center space-x-4">
-            <Link href="/" className="flex items-center space-x-2">
+            <Link href="/public" className="flex items-center space-x-2">
               <Home className="h-6 w-6 text-blue-600" />
               <span className="text-xl font-bold">智屋</span>
             </Link>
