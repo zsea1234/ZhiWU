@@ -258,7 +258,7 @@ export default function PropertiesPage() {
                       <SelectValue placeholder="选择面积" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">不限</SelectItem>
+                      <SelectItem value="1">不限</SelectItem>    {/* 用1表示不限 */}
                       <SelectItem value="50">50㎡以上</SelectItem>
                       <SelectItem value="80">80㎡以上</SelectItem>
                       <SelectItem value="100">100㎡以上</SelectItem>
@@ -274,7 +274,7 @@ export default function PropertiesPage() {
                       <SelectValue placeholder="选择户型" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">不限</SelectItem>
+                      <SelectItem value="622">不限</SelectItem>     {/* 用622表示不限 */}
                       <SelectItem value="1">1室</SelectItem>
                       <SelectItem value="2">2室</SelectItem>
                       <SelectItem value="3">3室</SelectItem>

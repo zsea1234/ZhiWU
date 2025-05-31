@@ -38,7 +38,7 @@ const mockRequests = [
   },
 ]
 
-export default function MaintenancePage() {
+export default function Maintenance() {
   const [requests, setRequests] = useState(mockRequests)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [newRequest, setNewRequest] = useState({
@@ -89,7 +89,7 @@ export default function MaintenancePage() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="space-y-6">
       <div className="flex justify-between items-center mb-8">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">维修请求</h1>
@@ -198,4 +198,4 @@ export default function MaintenancePage() {
       </div>
     </div>
   )
-} 
+}

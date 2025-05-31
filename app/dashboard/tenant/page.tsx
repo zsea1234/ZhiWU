@@ -1,22 +1,29 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Home,
   MessageSquare,
   FileText,
   CreditCard,
   Settings,
-  Plus,
-  Eye,
   AlertCircle,
 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+
+// 导入各个组件
+import Overview from "./components/Overview"
+import Properties from "./components/Properties"
+import Bookings from "./components/Bookings"
+import Leases from "./components/Leases"
+import Payments from "./components/Payments"
+import Maintenance from "./components/Maintenance"
+import Messages from "./components/Messages"
 
 // Mock user data
 const mockUser = {
@@ -28,6 +35,7 @@ const mockUser = {
 
 export default function TenantDashboard() {
   const [user, setUser] = useState(mockUser)
+  const [activeTab, setActiveTab] = useState("overview")
   const router = useRouter()
 
   useEffect(() => {
@@ -42,6 +50,27 @@ export default function TenantDashboard() {
     const role = localStorage.getItem("user_role") || "tenant"
     setUser((prev) => ({ ...prev, role }))
   }, [router])
+
+  const renderContent = () => {
+    switch (activeTab) {
+      case "overview":
+        return <Overview />
+      case "properties":
+        return <Properties />
+      case "bookings":
+        return <Bookings />
+      case "leases":
+        return <Leases />
+      case "payments":
+        return <Payments />
+      case "maintenance":
+        return <Maintenance />
+      case "messages":
+        return <Messages />
+      default:
+        return <Overview />
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -122,7 +151,7 @@ export default function TenantDashboard() {
         </div>
 
         {/* Main Content */}
-        <Tabs defaultValue="overview" className="space-y-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList>
             <TabsTrigger value="overview">概览</TabsTrigger>
             <TabsTrigger value="properties">房源搜索</TabsTrigger>
@@ -133,103 +162,9 @@ export default function TenantDashboard() {
             <TabsTrigger value="messages">消息中心</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="overview">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Current Lease */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>当前租约</CardTitle>
-                  <CardDescription>您的租赁合同信息</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div>
-                      <h4 className="font-medium">朝阳区幸福小区 2室1厅</h4>
-                      <p className="text-sm text-gray-600">租期：2024-01-01 至 2024-12-31</p>
-                      <p className="text-sm text-gray-600">月租金：¥5,000</p>
-                    </div>
-                    <div className="flex space-x-2">
-                      <Link href="/dashboard/leases/1">
-                        <Button size="sm" variant="outline">
-                          <Eye className="h-4 w-4 mr-2" />
-                          查看合同
-                        </Button>
-                      </Link>
-                      <Link href="/dashboard/payments/1">
-                        <Button size="sm">
-                          <CreditCard className="h-4 w-4 mr-2" />
-                          支付租金
-                        </Button>
-                      </Link>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Recent Messages */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>最近消息</CardTitle>
-                  <CardDescription>与房东的沟通记录</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {[
-                      { from: "李房东", message: "下月租金请按时支付", time: "2小时前" },
-                      { from: "李房东", message: "维修工明天上午会过去", time: "1天前" },
-                      { from: "系统通知", message: "租金支付提醒", time: "3天前" },
-                    ].map((msg, i) => (
-                      <div key={i} className="flex justify-between items-start">
-                        <div>
-                          <p className="text-sm font-medium">{msg.from}</p>
-                          <p className="text-sm text-gray-600">{msg.message}</p>
-                        </div>
-                        <span className="text-xs text-gray-400">{msg.time}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <Link href="/dashboard/messages">
-                    <Button variant="outline" className="w-full mt-4">
-                      查看所有消息
-                    </Button>
-                  </Link>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="properties">
-            <Card>
-              <CardHeader>
-                <CardTitle>房源搜索</CardTitle>
-                <CardDescription>寻找您理想的住所</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-8">
-                  <Home className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-600 mb-4">开始搜索适合您的房源</p>
-                  <Link href="/properties">
-                    <Button>
-                      <Plus className="h-4 w-4 mr-2" />
-                      搜索房源
-                    </Button>
-                  </Link>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="bookings">
-            <Card>
-              <CardHeader>
-                <CardTitle>我的预约</CardTitle>
-                <CardDescription>看房预约记录</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-gray-600">暂无预约记录</p>
-              </CardContent>
-            </Card>
-          </TabsContent>
+          <div className="mt-6">
+            {renderContent()}
+          </div>
         </Tabs>
       </div>
     </div>

@@ -35,7 +35,7 @@ const mockMessages = [
   },
 ]
 
-export default function MessagesPage() {
+export default function Messages() {
   const [messages, setMessages] = useState(mockMessages)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [newMessage, setNewMessage] = useState({
@@ -67,7 +67,7 @@ export default function MessagesPage() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="space-y-6">
       <div className="flex justify-between items-center mb-8">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">消息中心</h1>
@@ -152,4 +152,4 @@ export default function MessagesPage() {
       </div>
     </div>
   )
-} 
+}
