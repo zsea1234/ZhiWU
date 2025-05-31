@@ -15,6 +15,7 @@ import {
   Users,
   TrendingUp,
   AlertCircle,
+  Send,
 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -27,9 +28,76 @@ const mockUser = {
   email: "lisi@example.com",
 }
 
+interface Message {
+  id: number
+  sender: string
+  content: string
+  time: string
+  unread?: boolean
+  isTenant?: boolean
+}
+
+interface Booking {
+  id: number
+  name: string
+  property: string
+  time: string
+  status: "待确认" | "已确认" | "已完成"
+}
+
+interface Lease {
+  id: number
+  tenant: string
+  property: string
+  startDate: string
+  endDate: string
+  rent: string
+  contractUrl?: string
+}
+
 export default function LandlordDashboard() {
   const [user, setUser] = useState(mockUser)
+  const [selectedChat, setSelectedChat] = useState<Message | null>(null)
+  const [messageInput, setMessageInput] = useState("")
+  const [bookings, setBookings] = useState<Booking[]>([
+    { id: 1, name: "张三", property: "朝阳区幸福小区 2室1厅", time: "明天 14:00", status: "待确认" },
+    { id: 2, name: "李四", property: "海淀区学院路 1室1厅", time: "后天 10:30", status: "已确认" },
+    { id: 3, name: "王五", property: "西城区金融街 3室2厅", time: "周六 15:00", status: "待确认" },
+  ])
+  const [leases, setLeases] = useState<Lease[]>([
+    { 
+      id: 1, 
+      tenant: "张三", 
+      property: "朝阳区幸福小区 2室1厅", 
+      startDate: "2024-01-01", 
+      endDate: "2024-12-31", 
+      rent: "¥5,000/月",
+      contractUrl: "/contracts/lease-1.pdf"
+    },
+    { 
+      id: 2, 
+      tenant: "李四", 
+      property: "西城区金融街 3室2厅", 
+      startDate: "2024-02-01", 
+      endDate: "2025-01-31", 
+      rent: "¥8,000/月",
+      contractUrl: "/contracts/lease-2.pdf"
+    },
+  ])
   const router = useRouter()
+
+  const handleConfirmBooking = (bookingId: number) => {
+    setBookings(bookings.map(booking => 
+      booking.id === bookingId 
+        ? { ...booking, status: "已确认" }
+        : booking
+    ))
+  }
+
+  const handleViewContract = (contractUrl: string) => {
+    // 在新标签页中打开合同
+    window.open(contractUrl, '_blank')
+  }
 
   useEffect(() => {
     // Check authentication
@@ -214,6 +282,344 @@ export default function LandlordDashboard() {
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="bookings">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>预约看房</CardTitle>
+                  <CardDescription>待处理的看房预约</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {bookings.map((booking) => (
+                      <div key={booking.id} className="flex justify-between items-center p-4 border rounded-lg">
+                        <div>
+                          <p className="font-medium">{booking.name}</p>
+                          <p className="text-sm text-gray-600">{booking.property}</p>
+                          <p className="text-sm text-gray-500">{booking.time}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {booking.status === "待确认" && (
+                            <Button
+                              variant="default"
+                              size="sm"
+                              onClick={() => handleConfirmBooking(booking.id)}
+                            >
+                              确认预约
+                            </Button>
+                          )}
+                          <Badge 
+                            variant={
+                              booking.status === "已确认" 
+                                ? "default" 
+                                : booking.status === "已完成"
+                                ? "secondary"
+                                : "destructive"
+                            }
+                          >
+                            {booking.status}
+                          </Badge>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>预约统计</CardTitle>
+                  <CardDescription>本周预约情况</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center">
+                      <p className="text-sm text-gray-600">待确认预约</p>
+                      <p className="font-medium">{bookings.filter(b => b.status === "待确认").length}</p>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <p className="text-sm text-gray-600">已确认预约</p>
+                      <p className="font-medium">{bookings.filter(b => b.status === "已确认").length}</p>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <p className="text-sm text-gray-600">已完成预约</p>
+                      <p className="font-medium">{bookings.filter(b => b.status === "已完成").length}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="leases">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>当前租约</CardTitle>
+                  <CardDescription>正在进行的租约</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {leases.map((lease) => (
+                      <div key={lease.id} className="border-b pb-4 last:border-0">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="font-medium">{lease.tenant}</p>
+                            <p className="text-sm text-gray-600">{lease.property}</p>
+                            <p className="text-sm text-gray-500">租期：{lease.startDate} 至 {lease.endDate}</p>
+                          </div>
+                          <div className="flex flex-col items-end gap-2">
+                            <p className="font-medium text-green-600">{lease.rent}</p>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => lease.contractUrl && handleViewContract(lease.contractUrl)}
+                            >
+                              <FileText className="h-4 w-4 mr-2" />
+                              查看合同
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>即将到期</CardTitle>
+                  <CardDescription>30天内到期的租约</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {[
+                      { tenant: "王五", property: "海淀区学院路 1室1厅", endDate: "2024-04-15", daysLeft: 15 },
+                    ].map((lease, i) => (
+                      <div key={i} className="flex justify-between items-center">
+                        <div>
+                          <p className="font-medium">{lease.tenant}</p>
+                          <p className="text-sm text-gray-600">{lease.property}</p>
+                          <p className="text-sm text-gray-500">到期日：{lease.endDate}</p>
+                        </div>
+                        <Badge variant="destructive">剩余 {lease.daysLeft} 天</Badge>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="income">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>收入概览</CardTitle>
+                  <CardDescription>本月收入情况</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center">
+                      <p className="text-sm text-gray-600">总租金收入</p>
+                      <p className="font-medium text-green-600">¥15,000</p>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <p className="text-sm text-gray-600">已收租金</p>
+                      <p className="font-medium text-green-600">¥13,000</p>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <p className="text-sm text-gray-600">待收租金</p>
+                      <p className="font-medium text-orange-600">¥2,000</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>收入明细</CardTitle>
+                  <CardDescription>最近收入记录</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {[
+                      { tenant: "张三", property: "朝阳区幸福小区", amount: "¥5,000", date: "2024-03-01", status: "已收款" },
+                      { tenant: "李四", property: "西城区金融街", amount: "¥8,000", date: "2024-03-01", status: "已收款" },
+                      { tenant: "王五", property: "海淀区学院路", amount: "¥2,000", date: "2024-03-15", status: "待收款" },
+                    ].map((income, i) => (
+                      <div key={i} className="flex justify-between items-center">
+                        <div>
+                          <p className="font-medium">{income.tenant}</p>
+                          <p className="text-sm text-gray-600">{income.property}</p>
+                          <p className="text-sm text-gray-500">{income.date}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-medium text-green-600">{income.amount}</p>
+                          <Badge variant={income.status === "已收款" ? "default" : "secondary"}>
+                            {income.status}
+                          </Badge>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="maintenance">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>维修申请</CardTitle>
+                  <CardDescription>待处理的维修请求</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {[
+                      { tenant: "张三", property: "朝阳区幸福小区", issue: "卫生间水龙头漏水", date: "2024-03-10", status: "待处理" },
+                      { tenant: "李四", property: "西城区金融街", issue: "空调不制冷", date: "2024-03-09", status: "处理中" },
+                    ].map((maintenance, i) => (
+                      <div key={i} className="flex justify-between items-start">
+                        <div>
+                          <p className="font-medium">{maintenance.tenant}</p>
+                          <p className="text-sm text-gray-600">{maintenance.property}</p>
+                          <p className="text-sm text-gray-500">{maintenance.issue}</p>
+                          <p className="text-sm text-gray-500">申请时间：{maintenance.date}</p>
+                        </div>
+                        <Badge variant={maintenance.status === "待处理" ? "destructive" : "secondary"}>
+                          {maintenance.status}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>维修历史</CardTitle>
+                  <CardDescription>已完成的维修记录</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {[
+                      { tenant: "王五", property: "海淀区学院路", issue: "门锁更换", date: "2024-03-01", cost: "¥200" },
+                      { tenant: "张三", property: "朝阳区幸福小区", issue: "厨房下水道疏通", date: "2024-02-28", cost: "¥150" },
+                    ].map((record, i) => (
+                      <div key={i} className="flex justify-between items-start">
+                        <div>
+                          <p className="font-medium">{record.tenant}</p>
+                          <p className="text-sm text-gray-600">{record.property}</p>
+                          <p className="text-sm text-gray-500">{record.issue}</p>
+                          <p className="text-sm text-gray-500">完成时间：{record.date}</p>
+                        </div>
+                        <p className="font-medium text-gray-600">{record.cost}</p>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="messages">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <Card className="lg:col-span-1">
+                <CardHeader>
+                  <CardTitle>未读消息</CardTitle>
+                  <CardDescription>需要您回复的消息</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {[
+                      { id: 1, sender: "张三", content: "请问什么时候可以看房？", time: "10分钟前", unread: true },
+                      { id: 2, sender: "李四", content: "维修师傅什么时候能来？", time: "30分钟前", unread: true },
+                    ].map((message) => (
+                      <div
+                        key={message.id}
+                        className={`flex justify-between items-start p-3 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors ${
+                          selectedChat?.id === message.id ? "bg-gray-100" : ""
+                        }`}
+                        onClick={() => setSelectedChat(message)}
+                      >
+                        <div>
+                          <p className="font-medium">{message.sender}</p>
+                          <p className="text-sm text-gray-600">{message.content}</p>
+                          <p className="text-sm text-gray-500">{message.time}</p>
+                        </div>
+                        {message.unread && (
+                          <Badge variant="default">未读</Badge>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="lg:col-span-2">
+                <CardHeader>
+                  <CardTitle>消息历史</CardTitle>
+                  <CardDescription>最近的对话记录</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {selectedChat ? (
+                    <div className="flex flex-col h-[500px]">
+                      <div className="flex-1 overflow-y-auto space-y-4 mb-4">
+                        {[
+                          { id: 1, sender: selectedChat.sender, content: selectedChat.content, time: selectedChat.time, isTenant: true },
+                          { id: 2, sender: "我", content: "您好，请问有什么可以帮您？", time: "刚刚", isTenant: false },
+                        ].map((message) => (
+                          <div
+                            key={message.id}
+                            className={`flex ${message.isTenant ? "justify-start" : "justify-end"}`}
+                          >
+                            <div
+                              className={`max-w-[70%] p-3 rounded-lg ${
+                                message.isTenant
+                                  ? "bg-gray-100"
+                                  : "bg-blue-100"
+                              }`}
+                            >
+                              <p className="font-medium">{message.sender}</p>
+                              <p className="text-sm">{message.content}</p>
+                              <p className="text-xs text-gray-500 mt-1">{message.time}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={messageInput}
+                          onChange={(e) => setMessageInput(e.target.value)}
+                          placeholder="输入消息..."
+                          className="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <Button
+                          onClick={() => {
+                            if (messageInput.trim()) {
+                              // 这里添加发送消息的逻辑
+                              setMessageInput("")
+                            }
+                          }}
+                        >
+                          <Send className="h-4 w-4 mr-2" />
+                          发送
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-gray-500">
+                      请选择一条消息开始对话
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
         </Tabs>
       </div>

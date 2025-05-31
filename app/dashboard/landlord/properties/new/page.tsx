@@ -47,7 +47,7 @@ export default function NewPropertyPage() {
       
       setSuccess("房源发布成功！")
       setTimeout(() => {
-        router.push("/dashboard/properties")
+        router.push("/dashboard/landlord")
       }, 1500)
     } catch (err) {
       setError("发布失败，请稍后重试")
@@ -84,7 +84,7 @@ export default function NewPropertyPage() {
             </Link>
           </div>
           <nav className="hidden md:flex items-center space-x-6">
-            <Link href="/dashboard" className="text-gray-600 hover:text-blue-600">
+            <Link href="/dashboard/landlord" className="text-gray-600 hover:text-blue-600">
               返回控制台
             </Link>
           </nav>
