@@ -73,19 +73,19 @@ export const maintenanceService = {
     page_size?: number;
   }): Promise<PaginatedMaintenanceRequestResponse> => {
     const response = await api.get('/maintenance-requests', { params });
-    return response.data;
+    return response.data as PaginatedMaintenanceRequestResponse;
   },
 
   // 获取单个维修申请详情
   getMaintenanceRequest: async (requestId: number): Promise<MaintenanceRequest> => {
     const response = await api.get(`/maintenance-requests/${requestId}`);
-    return response.data;
+    return response.data as MaintenanceRequest;
   },
 
   // 提交维修申请
   createMaintenanceRequest: async (data: MaintenanceRequestCreateInput): Promise<MaintenanceRequest> => {
     const response = await api.post('/maintenance-requests', data);
-    return response.data;
+    return response.data as MaintenanceRequest;
   },
 
   // 更新维修申请状态
@@ -94,6 +94,6 @@ export const maintenanceService = {
     data: MaintenanceRequestUpdateInput
   ): Promise<MaintenanceRequest> => {
     const response = await api.put(`/maintenance-requests/${requestId}`, data);
-    return response.data;
+    return response.data as MaintenanceRequest;
   }
 }; 

@@ -258,7 +258,7 @@ export default function PropertyDetailPage() {
                 <div className="mb-6">
                   <h3 className="text-lg font-semibold mb-3">房屋设施</h3>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    {property.amenities.map((amenity, index) => {
+                    {property.amenities?.map((amenity, index) => {
                       const IconComponent = amenityIcons[amenity] || Wifi
                       return (
                         <div key={index} className="flex items-center space-x-2 p-3 bg-gray-50 rounded-lg">
@@ -274,11 +274,15 @@ export default function PropertyDetailPage() {
                 <div className="mb-6">
                   <h3 className="text-lg font-semibold mb-3">租赁规则</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {property.rules.map((rule, index) => (
-                      <div key={index} className="flex items-center space-x-2 p-3 bg-gray-50 rounded-lg">
-                        <span className="text-sm">{rule}</span>
-                      </div>
-                    ))}
+                    {property.rules?.length ? (
+                      property.rules.map((rule, index) => (
+                        <div key={index} className="flex items-center space-x-2 p-3 bg-gray-50 rounded-lg">
+                          <span className="text-sm">{rule}</span>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="col-span-2 text-gray-500 text-sm">暂无租赁规则</div>
+                    )}
                   </div>
                 </div>
               </CardContent>
