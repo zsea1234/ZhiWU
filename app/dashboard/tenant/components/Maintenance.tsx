@@ -1,201 +1,159 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { Wrench, Plus, MessageSquare } from "lucide-react"
-import { useRouter } from "next/navigation"
-
-// Mock maintenance requests
-const mockRequests = [
-  {
-    id: 1,
-    title: "厨房水龙头漏水",
-    description: "厨房水龙头一直在滴水，需要维修",
-    status: "pending",
-    createdAt: "2024-03-15",
-    property: "朝阳区幸福小区 2室1厅",
-  },
-  {
-    id: 2,
-    title: "空调不制冷",
-    description: "客厅的空调开启后不制冷，可能需要加氟",
-    status: "in_progress",
-    createdAt: "2024-03-10",
-    property: "朝阳区幸福小区 2室1厅",
-  },
-  {
-    id: 3,
-    title: "门锁故障",
-    description: "大门门锁有时无法正常打开",
-    status: "completed",
-    createdAt: "2024-03-01",
-    property: "朝阳区幸福小区 2室1厅",
-  },
-]
+import { useState, useEffect } from 'react';
+import { maintenanceService, MaintenanceRequest, MaintenanceRequestCreateInput } from '@/app/services/maintenance';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { toast } from 'sonner';
+import { format } from 'date-fns';
+import { zhCN } from 'date-fns/locale';
 
 export default function Maintenance() {
-  const [requests, setRequests] = useState(mockRequests)
-  const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [newRequest, setNewRequest] = useState({
-    title: "",
-    description: "",
-  })
-  const router = useRouter()
+  const [requests, setRequests] = useState<MaintenanceRequest[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [formData, setFormData] = useState<MaintenanceRequestCreateInput>({
+    property_id: 0,
+    description: '',
+    preferred_contact_time: ''
+  });
 
   useEffect(() => {
-    // Check authentication
-    const token = localStorage.getItem("auth_token")
-    if (!token) {
-      router.push("/auth/login")
-      return
-    }
-  }, [router])
+    fetchRequests();
+  }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    const request = {
-      id: requests.length + 1,
-      ...newRequest,
-      status: "pending",
-      createdAt: new Date().toISOString().split("T")[0],
-      property: "朝阳区幸福小区 2室1厅",
+  const fetchRequests = async () => {
+    try {
+      const response = await maintenanceService.getMaintenanceRequests();
+      setRequests(response.data);
+    } catch (error) {
+      toast.error('获取维修申请列表失败');
+      console.error('获取维修申请列表失败:', error);
+    } finally {
+      setLoading(false);
     }
-    setRequests([request, ...requests])
-    setNewRequest({ title: "", description: "" })
-    setIsDialogOpen(false)
-  }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.property_id || !formData.description) {
+      toast.error('请填写完整信息');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await maintenanceService.createMaintenanceRequest(formData);
+      toast.success('维修申请提交成功');
+      setFormData({
+        property_id: 0,
+        description: '',
+        preferred_contact_time: ''
+      });
+      fetchRequests();
+    } catch (error) {
+      toast.error('提交维修申请失败');
+      console.error('提交维修申请失败:', error);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const getStatusBadge = (status: string) => {
-    const variants = {
-      pending: "secondary" as const,
-      in_progress: "default" as const,
-      completed: "default" as const,
-    }
-    const labels = {
-      pending: "待处理",
-      in_progress: "处理中",
-      completed: "已完成",
-    }
-    return (
-      <Badge variant={variants[status as keyof typeof variants]}>
-        {labels[status as keyof typeof labels]}
-      </Badge>
-    )
+    const statusMap: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
+      pending_assignment: { label: '待指派', variant: 'secondary' },
+      assigned_to_worker: { label: '已指派', variant: 'default' },
+      in_progress: { label: '处理中', variant: 'default' },
+      completed: { label: '已完成', variant: 'outline' },
+      cancelled_by_tenant: { label: '已取消', variant: 'destructive' },
+      closed_by_landlord: { label: '已关闭', variant: 'destructive' }
+    };
+
+    const { label, variant } = statusMap[status] || { label: status, variant: 'default' };
+    return <Badge variant={variant}>{label}</Badge>;
+  };
+
+  if (loading) {
+    return <div className="flex justify-center items-center h-64">加载中...</div>;
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">维修请求</h1>
-          <p className="text-gray-600">提交和管理您的维修请求</p>
-        </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              新建请求
+      <Card>
+        <CardHeader>
+          <CardTitle>提交维修申请</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">房源ID</label>
+              <Input
+                type="number"
+                value={formData.property_id || ''}
+                onChange={(e) => setFormData({ ...formData, property_id: Number(e.target.value) })}
+                placeholder="请输入房源ID"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">问题描述</label>
+              <Textarea
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                placeholder="请详细描述需要维修的问题"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">期望联系时间</label>
+              <Input
+                type="text"
+                value={formData.preferred_contact_time || ''}
+                onChange={(e) => setFormData({ ...formData, preferred_contact_time: e.target.value })}
+                placeholder="例如：工作日下午"
+              />
+            </div>
+            <Button type="submit" disabled={submitting}>
+              {submitting ? '提交中...' : '提交申请'}
             </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>新建维修请求</DialogTitle>
-              <DialogDescription>
-                请详细描述您遇到的问题，以便我们更好地为您服务
-              </DialogDescription>
-            </DialogHeader>
-            <form onSubmit={handleSubmit}>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <label htmlFor="title" className="text-sm font-medium">
-                    问题标题
-                  </label>
-                  <Input
-                    id="title"
-                    value={newRequest.title}
-                    onChange={(e) =>
-                      setNewRequest({ ...newRequest, title: e.target.value })
-                    }
-                    placeholder="例如：水龙头漏水"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label htmlFor="description" className="text-sm font-medium">
-                    问题描述
-                  </label>
-                  <Textarea
-                    id="description"
-                    value={newRequest.description}
-                    onChange={(e) =>
-                      setNewRequest({ ...newRequest, description: e.target.value })
-                    }
-                    placeholder="请详细描述问题..."
-                    required
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button type="submit">提交请求</Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
-      </div>
+          </form>
+        </CardContent>
+      </Card>
 
-      <div className="space-y-6">
-        {requests.map((request) => (
-          <Card key={request.id}>
-            <CardHeader>
-              <div className="flex justify-between items-start">
-                <div>
-                  <CardTitle>{request.title}</CardTitle>
-                  <CardDescription>
-                    提交时间：{request.createdAt}
-                  </CardDescription>
+      <Card>
+        <CardHeader>
+          <CardTitle>维修申请记录</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {requests.length === 0 ? (
+              <p className="text-center text-gray-500">暂无维修申请记录</p>
+            ) : (
+              requests.map((request) => (
+                <div key={request.id} className="border rounded-lg p-4 space-y-2">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h3 className="font-medium">{request.property_summary.title}</h3>
+                      <p className="text-sm text-gray-500">{request.property_summary.address_summary}</p>
+                    </div>
+                    {getStatusBadge(request.status)}
+                  </div>
+                  <p className="text-sm">{request.description}</p>
+                  <div className="text-sm text-gray-500">
+                    <p>提交时间：{format(new Date(request.submitted_at), 'PPP', { locale: zhCN })}</p>
+                    {request.completed_at && (
+                      <p>完成时间：{format(new Date(request.completed_at), 'PPP', { locale: zhCN })}</p>
+                    )}
+                  </div>
                 </div>
-                {getStatusBadge(request.status)}
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">问题描述</p>
-                  <p className="mt-1">{request.description}</p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-600">房屋信息</p>
-                  <p className="mt-1">{request.property}</p>
-                </div>
-                <div className="flex space-x-2">
-                  <Button variant="outline" size="sm">
-                    <MessageSquare className="h-4 w-4 mr-2" />
-                    联系房东
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-
-        {requests.length === 0 && (
-          <Card>
-            <CardContent className="py-8 text-center">
-              <Wrench className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600 mb-4">暂无维修请求</p>
-              <Button onClick={() => setIsDialogOpen(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                新建请求
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-      </div>
+              ))
+            )}
+          </div>
+        </CardContent>
+      </Card>
     </div>
-  )
+  );
 }

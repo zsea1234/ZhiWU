@@ -33,28 +33,93 @@ const mockUser = {
   email: "zhangsan@example.com",
 }
 
+// 定义仪表盘统计数据接口
+interface DashboardStats {
+  activeLeases: number;
+  pendingPayments: number;
+  unreadMessages: number;
+  pendingMaintenance: number;
+}
+
 export default function TenantDashboard() {
   const [user, setUser] = useState(mockUser)
   const [activeTab, setActiveTab] = useState("overview")
+  const [stats, setStats] = useState<DashboardStats>({
+    activeLeases: 0,
+    pendingPayments: 0,
+    unreadMessages: 0,
+    pendingMaintenance: 0
+  })
   const router = useRouter()
 
+  // 获取仪表盘统计数据
+  const fetchDashboardStats = async () => {
+    try {
+      const token = localStorage.getItem("auth_token")
+      if (!token) return
+
+      // 1. 获取当前租约数量
+      const leasesResponse = await fetch('/api/v1/leases?status=active', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      const leasesData = await leasesResponse.json()
+      const activeLeases = leasesData.meta?.total || 0
+
+      // 2. 获取待支付租金
+      let pendingPayments = 0
+      if (activeLeases > 0) {
+        const paymentsResponse = await fetch('/api/v1/payments/leases?status=pending', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+        const paymentsData = await paymentsResponse.json()
+        pendingPayments = paymentsData.data.reduce((sum: number, payment: any) => sum + payment.amount, 0)
+      }
+
+      // 3. 获取未读消息数量
+      const messagesResponse = await fetch('/api/v1/messages/unread-count', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      const messagesData = await messagesResponse.json()
+      const unreadMessages = messagesData.unread_count || 0
+
+      // 4. 获取维修申请数量
+      const maintenanceResponse = await fetch('/api/v1/maintenance-requests?status=pending_assignment,in_progress', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      const maintenanceData = await maintenanceResponse.json()
+      const pendingMaintenance = maintenanceData.meta?.total || 0
+
+      setStats({
+        activeLeases,
+        pendingPayments,
+        unreadMessages,
+        pendingMaintenance
+      })
+    } catch (error) {
+      console.error('获取仪表盘统计数据失败:', error)
+    }
+  }
+
   useEffect(() => {
-    // Check authentication
+    // 检查认证
     const token = localStorage.getItem("auth_token")
     if (!token) {
       router.push("/auth/login")
       return
     }
 
-    // Get user role from localStorage or API
+    // 获取用户角色
     const role = localStorage.getItem("user_role") || "tenant"
     setUser((prev) => ({ ...prev, role }))
+
+    // 获取仪表盘统计数据
+    fetchDashboardStats()
   }, [router])
 
   const renderContent = () => {
     switch (activeTab) {
       case "overview":
-        return <Overview />
+        return <Overview setActiveTab={setActiveTab} />
       case "properties":
         return <Properties />
       case "bookings":
@@ -68,7 +133,7 @@ export default function TenantDashboard() {
       case "messages":
         return <Messages />
       default:
-        return <Overview />
+        return <Overview setActiveTab={setActiveTab} />
     }
   }
 
@@ -109,7 +174,7 @@ export default function TenantDashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">当前租约</p>
-                  <p className="text-2xl font-bold">1</p>
+                  <p className="text-2xl font-bold">{stats.activeLeases}</p>
                 </div>
                 <FileText className="h-8 w-8 text-blue-600" />
               </div>
@@ -120,7 +185,7 @@ export default function TenantDashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">待支付租金</p>
-                  <p className="text-2xl font-bold text-red-600">¥5,000</p>
+                  <p className="text-2xl font-bold text-red-600">¥{stats.pendingPayments.toLocaleString()}</p>
                 </div>
                 <CreditCard className="h-8 w-8 text-red-600" />
               </div>
@@ -131,7 +196,7 @@ export default function TenantDashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">未读消息</p>
-                  <p className="text-2xl font-bold">3</p>
+                  <p className="text-2xl font-bold">{stats.unreadMessages}</p>
                 </div>
                 <MessageSquare className="h-8 w-8 text-green-600" />
               </div>
@@ -142,7 +207,7 @@ export default function TenantDashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">维修申请</p>
-                  <p className="text-2xl font-bold">1</p>
+                  <p className="text-2xl font-bold">{stats.pendingMaintenance}</p>
                 </div>
                 <AlertCircle className="h-8 w-8 text-orange-600" />
               </div>

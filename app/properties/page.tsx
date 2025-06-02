@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,125 +11,7 @@ import { Slider } from "@/components/ui/slider"
 import { Search, MapPin, Home, Bed, Bath, Square, Heart, Filter, Loader2, Users, ArrowRight } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
-
-interface Property {
-  id: number
-  title: string
-  address: string
-  price: number
-  area: number
-  rooms: number
-  bathrooms: number
-  maxTenants: number
-  status: "available" | "rented"
-  images: string[]
-  created_at: string
-}
-
-// Mock property data
-const allMockProperties: Property[] = [
-  {
-    id: 1,
-    title: "阳光花园 2室1厅",
-    address: "北京市朝阳区阳光花园小区",
-    price: 5000,
-    area: 80,
-    rooms: 2,
-    bathrooms: 1,
-    maxTenants: 3,
-    status: "available",
-    images: ["/mock/property1.jpg"],
-    created_at: "2024-03-20",
-  },
-  {
-    id: 2,
-    title: "城市中心 3室2厅",
-    address: "北京市海淀区中关村",
-    price: 8000,
-    area: 120,
-    rooms: 3,
-    bathrooms: 2,
-    maxTenants: 4,
-    status: "available",
-    images: ["/mock/property2.jpg"],
-    created_at: "2024-03-19",
-  },
-  {
-    id: 3,
-    title: "精装两居室 近地铁",
-    address: "朝阳区 · 幸福小区 · 85㎡",
-    rent: 5000,
-    bedrooms: 2,
-    living_rooms: 1,
-    bathrooms: 1,
-    area: 85,
-    images: ["/placeholder.svg?height=200&width=300"],
-    status: "vacant",
-    tags: ["近地铁", "精装修", "拎包入住"],
-    area_code: "chaoyang",
-    created_at: "2025-05-20T10:00:00Z",
-  },
-  {
-    id: 4,
-    title: "温馨一居室 采光好",
-    address: "海淀区 · 学院路 · 60㎡",
-    rent: 3500,
-    bedrooms: 1,
-    living_rooms: 1,
-    bathrooms: 1,
-    area: 60,
-    images: ["/placeholder.svg?height=200&width=300"],
-    status: "vacant",
-    tags: ["采光好", "安静", "学区房"],
-    area_code: "haidian",
-    created_at: "2025-05-22T11:00:00Z",
-  },
-  {
-    id: 5,
-    title: "豪华三居室 高层景观",
-    address: "西城区 · 金融街 · 120㎡",
-    rent: 8000,
-    bedrooms: 3,
-    living_rooms: 2,
-    bathrooms: 2,
-    area: 120,
-    images: ["/placeholder.svg?height=200&width=300"],
-    status: "vacant",
-    tags: ["高层", "景观房", "豪华装修"],
-    area_code: "xicheng",
-    created_at: "2025-05-18T09:00:00Z",
-  },
-  {
-    id: 6,
-    title: "朝阳大悦城旁 开间",
-    address: "朝阳区 · 青年路 · 45㎡",
-    rent: 4200,
-    bedrooms: 0, // Studio
-    living_rooms: 1,
-    bathrooms: 1,
-    area: 45,
-    images: ["/placeholder.svg?height=200&width=300"],
-    status: "vacant",
-    tags: ["近商圈", "独立卫浴"],
-    area_code: "chaoyang",
-    created_at: "2025-05-25T14:00:00Z",
-  },
-  {
-    id: 7,
-    title: "海淀学府旁 精致一居",
-    address: "海淀区 · 中关村 · 55㎡",
-    rent: 6000,
-    bedrooms: 1,
-    living_rooms: 1,
-    bathrooms: 1,
-    area: 55,
-    images: ["/placeholder.svg?height=200&width=300"],
-    status: "vacant",
-    tags: ["学区", "新装修"],
-    area_code: "haidian",
-    created_at: "2025-05-15T16:00:00Z",
-  },
-]
+import { PropertySummary, PropertySearchParams, PaginatedPropertyResponse, propertyService } from "../services/property"
 
 export default function PropertiesPage() {
   const [searchQuery, setSearchQuery] = useState("")
@@ -137,85 +19,88 @@ export default function PropertiesPage() {
   const [selectedRooms, setSelectedRooms] = useState("")
   const [priceRange, setPriceRange] = useState([0, 10000])
   const [showFilters, setShowFilters] = useState(false)
-  const [displayedProperties, setDisplayedProperties] = useState(allMockProperties)
+  const [properties, setProperties] = useState<PropertySummary[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [favorites, setFavorites] = useState<number[]>([])
   const [currentPage, setCurrentPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [userRole, setUserRole] = useState<string>("")
   const propertiesPerPage = 6
 
-  const filterAndSortProperties = () => {
-    setIsLoading(true)
-    setTimeout(() => {
-      let filtered = allMockProperties
+  useEffect(() => {
+    // 检查登录状态
+    const token = localStorage.getItem("auth_token")
+    const role = localStorage.getItem("user_role")
+    setIsLoggedIn(!!token)
+    setUserRole(role || "")
+  }, [])
 
-      if (searchQuery) {
-        filtered = filtered.filter(
-          (p) =>
-            p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            p.address.toLowerCase().includes(searchQuery.toLowerCase()),
-        )
-      }
-
-      if (selectedRooms && selectedRooms !== "any") {
-        const numRooms = Number.parseInt(selectedRooms)
-        if (numRooms === 4) {
-          filtered = filtered.filter((p) => p.rooms >= numRooms)
-        } else {
-          filtered = filtered.filter((p) => p.rooms === numRooms)
-        }
-      }
-
-      if (selectedArea && selectedArea !== "all_areas") {
-        filtered = filtered.filter((p) => p.area >= parseInt(selectedArea))
-      }
-
-      filtered = filtered.filter((p) => p.price >= priceRange[0] && p.price <= priceRange[1])
-
-      filtered.sort((a, b) => {
-        let comparison = 0
-        if (comparison === 0) {
-          comparison = a.price - b.price
-        } else {
-          comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-        }
-        return comparison
-      })
-
-      setDisplayedProperties(filtered)
-      setCurrentPage(1)
-      setIsLoading(false)
-    }, 500)
+  const getDashboardPath = () => {
+    switch (userRole) {
+      case "admin":
+        return "/dashboard/admin"
+      case "landlord":
+        return "/dashboard/landlord"
+      case "tenant":
+        return "/dashboard/tenant"
+      default:
+        return "/dashboard"
+    }
   }
+
+  const searchProperties = async (page = 1) => {
+    setIsLoading(true);
+    try {
+      const params: PropertySearchParams = {
+        keyword: searchQuery,
+        min_rent: priceRange[0],
+        max_rent: priceRange[1],
+        page,
+        page_size: propertiesPerPage,
+        sort_by: "created_at",
+        sort_order: "desc"
+      };
+
+      if (selectedRooms && selectedRooms !== "622") {
+        params.bedrooms = parseInt(selectedRooms);
+      }
+
+      if (selectedArea && selectedArea !== "1") {
+        params.min_area = parseInt(selectedArea);
+      }
+
+      const response = await propertyService.searchProperties(params);
+      setProperties(response.data);
+      setTotalPages(response.meta.last_page);
+      setCurrentPage(response.meta.current_page);
+    } catch (error) {
+      console.error('搜索房源失败:', error);
+      // 这里可以添加错误提示
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
-    filterAndSortProperties()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    searchQuery,
-    selectedRooms,
-    selectedArea,
-    priceRange,
-  ])
-
-  const handleSearchButtonClick = () => {
-    filterAndSortProperties()
-  }
-
-  const handleToggleFavorite = (propertyId: number) => {
-    setFavorites((prev) => (prev.includes(propertyId) ? prev.filter((id) => id !== propertyId) : [...prev, propertyId]))
-  }
+    searchProperties(1);
+  }, [searchQuery, selectedRooms, selectedArea, priceRange]);
 
   const handleLoadMore = () => {
-    setIsLoading(true)
-    setTimeout(() => {
-      setCurrentPage((prevPage) => prevPage + 1)
-      setIsLoading(false)
-    }, 500)
-  }
+    if (currentPage < totalPages) {
+      searchProperties(currentPage + 1);
+    }
+  };
 
-  const paginatedProperties = useMemo(() => {
-    return displayedProperties.slice(0, currentPage * propertiesPerPage)
-  }, [displayedProperties, currentPage, propertiesPerPage])
+  const handleToggleFavorite = (propertyId: number) => {
+    setFavorites((prev) => 
+      prev.includes(propertyId) 
+        ? prev.filter((id) => id !== propertyId) 
+        : [...prev, propertyId]
+    );
+  };
+
+  
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -227,21 +112,29 @@ export default function PropertiesPage() {
             <span className="text-xl font-bold">智屋</span>
           </Link>
           <nav className="hidden md:flex items-center space-x-6">
-            <Link href="/dashboard" className="text-gray-600 hover:text-blue-600">
-              控制台
-            </Link>
+            {isLoggedIn && (
+              <Link href={getDashboardPath()} className="text-gray-600 hover:text-blue-600">
+                控制台
+              </Link>
+            )}
             <Link href="/about" className="text-gray-600 hover:text-blue-600">
               关于我们
             </Link>
           </nav>
           <div className="flex items-center space-x-3">
-            <Link href="/auth/login">
-              <Button variant="outline">登录</Button>
-            </Link>
+            {!isLoggedIn ? (
+              <Link href="/auth/login">
+                <Button variant="outline">登录</Button>
+              </Link>
+            ) : (
+              <Link href="/dashboard/settings">
+                <Button variant="outline">设置</Button>
+              </Link>
+            )}
           </div>
         </div>
       </header>
-
+  
       <div className="container mx-auto px-4 py-8">
         <div className="flex flex-col md:flex-row gap-8">
           {/* 筛选侧边栏 */}
@@ -258,7 +151,7 @@ export default function PropertiesPage() {
                       <SelectValue placeholder="选择面积" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="1">不限</SelectItem>    {/* 用1表示不限 */}
+                      <SelectItem value="1">不限</SelectItem>
                       <SelectItem value="50">50㎡以上</SelectItem>
                       <SelectItem value="80">80㎡以上</SelectItem>
                       <SelectItem value="100">100㎡以上</SelectItem>
@@ -266,7 +159,7 @@ export default function PropertiesPage() {
                     </SelectContent>
                   </Select>
                 </div>
-
+  
                 <div className="space-y-2">
                   <label className="text-sm font-medium">户型</label>
                   <Select value={selectedRooms} onValueChange={setSelectedRooms}>
@@ -274,7 +167,7 @@ export default function PropertiesPage() {
                       <SelectValue placeholder="选择户型" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="622">不限</SelectItem>     {/* 用622表示不限 */}
+                      <SelectItem value="622">不限</SelectItem>
                       <SelectItem value="1">1室</SelectItem>
                       <SelectItem value="2">2室</SelectItem>
                       <SelectItem value="3">3室</SelectItem>
@@ -282,7 +175,7 @@ export default function PropertiesPage() {
                     </SelectContent>
                   </Select>
                 </div>
-
+  
                 <div className="space-y-2">
                   <label className="text-sm font-medium">价格范围</label>
                   <Slider
@@ -300,7 +193,7 @@ export default function PropertiesPage() {
               </CardContent>
             </Card>
           </div>
-
+  
           {/* 房源列表 */}
           <div className="flex-1">
             <div className="mb-6">
@@ -314,49 +207,64 @@ export default function PropertiesPage() {
                 />
               </div>
             </div>
-
+  
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {paginatedProperties.map((property) => (
+              {properties.map((property) => (
                 <Card key={property.id} className="overflow-hidden">
                   <div className="aspect-video relative bg-gray-100">
-                    <img
-                      src={property.images[0]}
+                    <Image
+                      src={property.main_image_url || '/placeholder.svg'}
                       alt={property.title}
-                      className="object-cover w-full h-full"
+                      fill
+                      className="object-cover"
                     />
                     <Badge
                       className="absolute top-2 right-2"
-                      variant={property.status === "available" ? "default" : "secondary"}
+                      variant={property.status === "vacant" ? "default" : "secondary"}
                     >
-                      {property.status === "available" ? "可租" : "已租"}
+                      {property.status === "vacant" ? "可租" : "已租"}
                     </Badge>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="absolute top-2 left-2"
+                      onClick={() => handleToggleFavorite(property.id)}
+                    >
+                      <Heart
+                        className={`h-5 w-5 ${
+                          favorites.includes(property.id)
+                            ? "fill-red-500 text-red-500"
+                            : "text-white"
+                        }`}
+                      />
+                    </Button>
                   </div>
                   <CardHeader>
                     <CardTitle className="text-lg">{property.title}</CardTitle>
                     <CardDescription className="flex items-center text-sm">
                       <MapPin className="w-4 h-4 mr-1" />
-                      {property.address}
+                      {property.address_summary}
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="grid grid-cols-3 gap-4 text-sm">
                       <div className="flex items-center">
                         <Bed className="w-4 h-4 mr-1" />
-                        {property.rooms}室
+                        {property.bedrooms}室
                       </div>
                       <div className="flex items-center">
                         <Bath className="w-4 h-4 mr-1" />
-                        {property.bathrooms}卫
+                        {property.living_rooms}厅
                       </div>
                       <div className="flex items-center">
-                        <Users className="w-4 h-4 mr-1" />
-                        {property.maxTenants}人
+                        <Square className="w-4 h-4 mr-1" />
+                        {property.area_sqm}㎡
                       </div>
                     </div>
                   </CardContent>
                   <CardFooter className="flex justify-between items-center">
                     <div className="text-xl font-bold text-primary">
-                      ¥{property.price}
+                      ¥{property.rent_price_monthly}
                       <span className="text-sm font-normal text-gray-500">/月</span>
                     </div>
                     <Link href={`/properties/${property.id}`}>
@@ -371,14 +279,16 @@ export default function PropertiesPage() {
             </div>
           </div>
         </div>
-
+  
         <div className="flex items-center justify-between mb-6">
           <div>
-            <p className="text-gray-600">{isLoading ? "正在加载..." : `找到 ${displayedProperties.length} 套房源`}</p>
+            <p className="text-gray-600">
+              {isLoading ? "正在加载..." : `找到 ${properties.length} 套房源`}
+            </p>
           </div>
         </div>
-
-        {!isLoading && displayedProperties.length > paginatedProperties.length && (
+  
+        {!isLoading && currentPage < totalPages && (
           <div className="text-center mt-12">
             <Button variant="outline" size="lg" onClick={handleLoadMore} disabled={isLoading}>
               {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
@@ -388,5 +298,5 @@ export default function PropertiesPage() {
         )}
       </div>
     </div>
-  )
-}
+  );
+  }

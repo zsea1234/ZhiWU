@@ -1,57 +1,61 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Home, Loader2 } from "lucide-react"
-import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Loader2 } from "lucide-react"
+import { useAuth } from "@/app/contexts/AuthContext"
+import api from "@/app/services/api"
+import { User } from "@/app/services/userService"
 
-type UserRole = "tenant" | "landlord" | "admin"
+interface RegisterResponse {
+  access_token: string;
+  user: User;
+}
+
+interface RegisterInput {
+  username: string;
+  password: string;
+  email: string;
+  phone: string;
+  role: 'tenant' | 'landlord';
+}
 
 export default function RegisterPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<RegisterInput>({
     username: "",
     email: "",
     password: "",
-    confirmPassword: "",
-    role: "tenant" as UserRole,
     phone: "",
+    role: "tenant",
   })
   const router = useRouter()
+  const { login } = useAuth()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
     setError("")
 
-    if (formData.password !== formData.confirmPassword) {
-      setError("两次输入的密码不一致")
-      setIsLoading(false)
-      return
-    }
-
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1500))
+      const response = await api.post<RegisterResponse>('/auth/register', formData)
+      const { access_token, user } = response.data
 
-      // Mock successful registration
-      localStorage.setItem("auth_token", "mock_jwt_token")
-      localStorage.setItem("user_role", formData.role)
+      await login(access_token)
 
       // 根据用户角色跳转到不同的页面
-      switch (formData.role) {
+      switch (user.role) {
         case "admin":
           router.push("/dashboard/admin")
           break
         case "landlord":
-          router.push("/dashboard/properties")
+          router.push("/dashboard/landlord")
           break
         case "tenant":
           router.push("/dashboard/tenant")
@@ -59,8 +63,8 @@ export default function RegisterPage() {
         default:
           router.push("/dashboard")
       }
-    } catch (err) {
-      setError("注册失败，请稍后重试")
+    } catch (err: any) {
+      setError(err.response?.data?.message || "注册失败，请稍后重试")
     } finally {
       setIsLoading(false)
     }
@@ -72,135 +76,74 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <Link href="/" className="inline-flex items-center space-x-2">
-            <Home className="h-8 w-8 text-blue-600" />
-            <span className="text-2xl font-bold text-gray-900">智屋</span>
-          </Link>
-        </div>
-
-        <Card className="shadow-lg">
-          <CardHeader className="text-center">
-            <CardTitle className="text-2xl">创建账户</CardTitle>
-            <CardDescription>注册您的账户以开始使用服务</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {error && (
-                <Alert variant="destructive">
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
-
-              <div className="space-y-2">
-                <Label htmlFor="username">用户名</Label>
-                <Input
-                  id="username"
-                  name="username"
-                  type="text"
-                  placeholder="请输入用户名"
-                  value={formData.username}
-                  onChange={handleInputChange}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="email">邮箱</Label>
-                <Input
-                  id="email"
-                  name="email"
-                  type="email"
-                  placeholder="请输入邮箱"
-                  value={formData.email}
-                  onChange={handleInputChange}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="phone">手机号码</Label>
-                <Input
-                  id="phone"
-                  name="phone"
-                  type="tel"
-                  placeholder="请输入手机号码"
-                  value={formData.phone}
-                  onChange={handleInputChange}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="password">密码</Label>
-                <Input
-                  id="password"
-                  name="password"
-                  type="password"
-                  placeholder="请输入密码"
-                  value={formData.password}
-                  onChange={handleInputChange}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="confirmPassword">确认密码</Label>
-                <Input
-                  id="confirmPassword"
-                  name="confirmPassword"
-                  type="password"
-                  placeholder="请再次输入密码"
-                  value={formData.confirmPassword}
-                  onChange={handleInputChange}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>注册身份</Label>
-                <RadioGroup
-                  value={formData.role}
-                  onValueChange={(value: UserRole) => setFormData((prev) => ({ ...prev, role: value }))}
-                  className="flex space-x-4"
-                >
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="tenant" id="tenant" />
-                    <Label htmlFor="tenant">租客</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="landlord" id="landlord" />
-                    <Label htmlFor="landlord">房东</Label>
-                  </div>
-                </RadioGroup>
-              </div>
-
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    注册中...
-                  </>
-                ) : (
-                  "注册"
-                )}
-              </Button>
-            </form>
-
-            <div className="mt-6 text-center">
-              <p className="text-sm text-gray-600">
-                已有账户？{" "}
-                <Link href="/auth/login" className="text-blue-600 hover:underline">
-                  立即登录
-                </Link>
-              </p>
+    <div className="container flex h-screen w-screen flex-col items-center justify-center">
+      <Card className="w-[350px]">
+        <CardHeader>
+          <CardTitle>注册</CardTitle>
+          <CardDescription>创建您的账户</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="username">用户名</Label>
+              <Input
+                id="username"
+                name="username"
+                type="text"
+                placeholder="请输入用户名"
+                value={formData.username}
+                onChange={handleInputChange}
+                required
+              />
             </div>
-          </CardContent>
-        </Card>
-      </div>
+            <div className="space-y-2">
+              <Label htmlFor="email">邮箱</Label>
+              <Input
+                id="email"
+                name="email"
+                type="email"
+                placeholder="请输入邮箱"
+                value={formData.email}
+                onChange={handleInputChange}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="phone">手机号</Label>
+              <Input
+                id="phone"
+                name="phone"
+                type="tel"
+                placeholder="请输入手机号"
+                value={formData.phone}
+                onChange={handleInputChange}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">密码</Label>
+              <Input
+                id="password"
+                name="password"
+                type="password"
+                placeholder="请输入密码"
+                value={formData.password}
+                onChange={handleInputChange}
+                required
+              />
+            </div>
+            {error && (
+              <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+            <Button type="submit" className="w-full" disabled={isLoading}>
+              {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              注册
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   )
 }
