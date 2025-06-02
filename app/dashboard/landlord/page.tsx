@@ -16,6 +16,10 @@ import {
   TrendingUp,
   AlertCircle,
   Send,
+  X,
+  Download,
+  Trash2,
+  AlertTriangle,
 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -37,6 +41,27 @@ interface Message {
   isTenant?: boolean
 }
 
+interface Property {
+  id: number
+  title: string
+  address: string
+  type: string
+  area: number
+  rooms: number
+  price: number
+  status: "已出租" | "空置" | "待维修"
+  images: string[]
+  facilities: string[]
+  description: string
+  createdAt: string
+  tenant?: {
+    name: string
+    phone: string
+    startDate: string
+    endDate: string
+  }
+}
+
 interface Booking {
   id: number
   name: string
@@ -53,6 +78,35 @@ interface Lease {
   endDate: string
   rent: string
   contractUrl?: string
+}
+
+interface ContractPreview {
+  isOpen: boolean
+  contractUrl: string
+  tenant: string
+  property: string
+  contractData?: ContractData
+}
+
+interface ContractData {
+  contractNumber: string
+  startDate: string
+  endDate: string
+  monthlyRent: string
+  deposit: string
+  paymentMethod: string
+  terms: string[]
+  signatures: {
+    landlord: string
+    tenant: string
+    date: string
+  }
+}
+
+interface DeleteDialog {
+  isOpen: boolean
+  propertyId: number | null
+  propertyTitle: string
 }
 
 export default function LandlordDashboard() {
@@ -84,7 +138,130 @@ export default function LandlordDashboard() {
       contractUrl: "/contracts/lease-2.pdf"
     },
   ])
+  const [contractPreview, setContractPreview] = useState<ContractPreview>({
+    isOpen: false,
+    contractUrl: "",
+    tenant: "",
+    property: ""
+  })
+  const [properties, setProperties] = useState<Property[]>([
+    {
+      id: 1,
+      title: "朝阳区幸福小区 2室1厅",
+      address: "北京市朝阳区幸福小区3号楼2单元501",
+      type: "住宅",
+      area: 85,
+      rooms: 2,
+      price: 5000,
+      status: "已出租",
+      images: [
+        "/properties/property-1-1.jpg",
+        "/properties/property-1-2.jpg",
+        "/properties/property-1-3.jpg"
+      ],
+      facilities: ["空调", "热水器", "洗衣机", "冰箱", "电视", "宽带"],
+      description: "精装修两居室，采光好，交通便利，近地铁站。",
+      createdAt: "2024-01-01",
+      tenant: {
+        name: "张三",
+        phone: "13800138000",
+        startDate: "2024-01-01",
+        endDate: "2024-12-31"
+      }
+    },
+    {
+      id: 2,
+      title: "海淀区学院路 1室1厅",
+      address: "北京市海淀区学院路8号院2号楼1单元303",
+      type: "住宅",
+      area: 45,
+      rooms: 1,
+      price: 3500,
+      status: "空置",
+      images: [
+        "/properties/property-2-1.jpg",
+        "/properties/property-2-2.jpg"
+      ],
+      facilities: ["空调", "热水器", "洗衣机", "冰箱", "宽带"],
+      description: "温馨一居室，适合单身或情侣居住，近大学城。",
+      createdAt: "2024-02-01"
+    },
+    {
+      id: 3,
+      title: "西城区金融街 3室2厅",
+      address: "北京市西城区金融街15号院1号楼2单元801",
+      type: "住宅",
+      area: 120,
+      rooms: 3,
+      price: 8000,
+      status: "已出租",
+      images: [
+        "/properties/property-3-1.jpg",
+        "/properties/property-3-2.jpg",
+        "/properties/property-3-3.jpg"
+      ],
+      facilities: ["空调", "热水器", "洗衣机", "冰箱", "电视", "宽带", "烤箱"],
+      description: "豪华三居室，精装修，家具家电齐全，近金融街。",
+      createdAt: "2024-01-15",
+      tenant: {
+        name: "李四",
+        phone: "13900139000",
+        startDate: "2024-02-01",
+        endDate: "2025-01-31"
+      }
+    }
+  ])
+  const [deleteDialog, setDeleteDialog] = useState<DeleteDialog>({
+    isOpen: false,
+    propertyId: null,
+    propertyTitle: ""
+  })
   const router = useRouter()
+
+  const mockContractData: Record<string, ContractData> = {
+    "lease-1": {
+      contractNumber: "HT2024001",
+      startDate: "2024-01-01",
+      endDate: "2024-12-31",
+      monthlyRent: "¥5,000",
+      deposit: "¥5,000",
+      paymentMethod: "银行转账",
+      terms: [
+        "租期一年，到期可续签",
+        "每月1号前支付当月租金",
+        "水电费由租客承担",
+        "不得擅自转租或分租",
+        "保持房屋整洁，爱护设施",
+        "退租时需提前30天通知"
+      ],
+      signatures: {
+        landlord: "李兴",
+        tenant: "张三",
+        date: "2023-12-25"
+      }
+    },
+    "lease-2": {
+      contractNumber: "HT2024002",
+      startDate: "2024-02-01",
+      endDate: "2025-01-31",
+      monthlyRent: "¥8,000",
+      deposit: "¥8,000",
+      paymentMethod: "银行转账",
+      terms: [
+        "租期一年，到期可续签",
+        "每月1号前支付当月租金",
+        "水电费由租客承担",
+        "不得擅自转租或分租",
+        "保持房屋整洁，爱护设施",
+        "退租时需提前30天通知"
+      ],
+      signatures: {
+        landlord: "李兴",
+        tenant: "李四",
+        date: "2024-01-20"
+      }
+    }
+  }
 
   const handleConfirmBooking = (bookingId: number) => {
     setBookings(bookings.map(booking => 
@@ -94,9 +271,50 @@ export default function LandlordDashboard() {
     ))
   }
 
-  const handleViewContract = (contractUrl: string) => {
-    // 在新标签页中打开合同
-    window.open(contractUrl, '_blank')
+  const handleViewContract = (lease: Lease) => {
+    const contractId = lease.contractUrl?.split('/').pop()?.replace('.pdf', '') || ''
+    setContractPreview({
+      isOpen: true,
+      contractUrl: lease.contractUrl || "",
+      tenant: lease.tenant,
+      property: lease.property,
+      contractData: mockContractData[contractId]
+    })
+  }
+
+  const handleClosePreview = () => {
+    setContractPreview(prev => ({ ...prev, isOpen: false }))
+  }
+
+  const handleDownloadContract = (url: string) => {
+    window.open(url, '_blank')
+  }
+
+  const handleDeleteProperty = (propertyId: number, propertyTitle: string) => {
+    setDeleteDialog({
+      isOpen: true,
+      propertyId,
+      propertyTitle
+    })
+  }
+
+  const confirmDelete = () => {
+    if (deleteDialog.propertyId) {
+      setProperties(properties.filter(p => p.id !== deleteDialog.propertyId))
+      setDeleteDialog({
+        isOpen: false,
+        propertyId: null,
+        propertyTitle: ""
+      })
+    }
+  }
+
+  const cancelDelete = () => {
+    setDeleteDialog({
+      isOpen: false,
+      propertyId: null,
+      propertyTitle: ""
+    })
   }
 
   useEffect(() => {
@@ -264,24 +482,94 @@ export default function LandlordDashboard() {
           </TabsContent>
 
           <TabsContent value="properties">
-            <Card>
-              <CardHeader>
-                <CardTitle>房源管理</CardTitle>
-                <CardDescription>管理您发布的所有房源</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-8">
-                  <Home className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-600 mb-4">管理您的房源信息</p>
-                  <Link href="/dashboard/landlord/properties/new">
-                    <Button>
-                      <Plus className="h-4 w-4 mr-2" />
-                      发布新房源
-                    </Button>
-                  </Link>
+            <div className="space-y-6">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h2 className="text-2xl font-bold">房源管理</h2>
+                  <p className="text-gray-600">管理您发布的所有房源</p>
                 </div>
-              </CardContent>
-            </Card>
+                <Link href="/dashboard/landlord/properties/new">
+                  <Button>
+                    <Plus className="h-4 w-4 mr-2" />
+                    发布新房源
+                  </Button>
+                </Link>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {properties.map((property) => (
+                  <Card key={property.id} className="overflow-hidden">
+                    <div className="relative h-48">
+                      <img
+                        src={property.images[0]}
+                        alt={property.title}
+                        className="w-full h-full object-cover"
+                      />
+                      <Badge
+                        variant={
+                          property.status === "已出租"
+                            ? "default"
+                            : property.status === "空置"
+                            ? "secondary"
+                            : "destructive"
+                        }
+                        className="absolute top-2 right-2"
+                      >
+                        {property.status}
+                      </Badge>
+                    </div>
+                    <CardContent className="p-4">
+                      <h3 className="font-semibold text-lg mb-2">{property.title}</h3>
+                      <div className="space-y-2 text-sm text-gray-600">
+                        <p>{property.address}</p>
+                        <div className="flex justify-between">
+                          <span>{property.area}㎡</span>
+                          <span>{property.rooms}室</span>
+                          <span className="text-green-600 font-medium">¥{property.price}/月</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {property.facilities.slice(0, 3).map((facility, index) => (
+                            <Badge key={index} variant="outline" className="text-xs">
+                              {facility}
+                            </Badge>
+                          ))}
+                          {property.facilities.length > 3 && (
+                            <Badge variant="outline" className="text-xs">
+                              +{property.facilities.length - 3}
+                            </Badge>
+                          )}
+                        </div>
+                        {property.tenant && (
+                          <div className="mt-2 pt-2 border-t">
+                            <p className="text-sm">
+                              租客：{property.tenant.name}
+                              <span className="ml-2 text-gray-500">
+                                {property.tenant.startDate} 至 {property.tenant.endDate}
+                              </span>
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                      <div className="mt-4 flex justify-end gap-2">
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => handleDeleteProperty(property.id, property.title)}
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          删除
+                        </Button>
+                        <Link href={`/properties/${property.id}`}>
+                          <Button variant="outline" size="sm">
+                            查看详情
+                          </Button>
+                        </Link>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
           </TabsContent>
 
           <TabsContent value="bookings">
@@ -375,7 +663,7 @@ export default function LandlordDashboard() {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => lease.contractUrl && handleViewContract(lease.contractUrl)}
+                              onClick={() => handleViewContract(lease)}
                             >
                               <FileText className="h-4 w-4 mr-2" />
                               查看合同
@@ -623,6 +911,148 @@ export default function LandlordDashboard() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Contract Preview Modal */}
+      {contractPreview.isOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg w-[90%] h-[90%] flex flex-col">
+            <div className="p-4 border-b flex justify-between items-center">
+              <div>
+                <h3 className="text-lg font-semibold">合同预览</h3>
+                <p className="text-sm text-gray-600">
+                  {contractPreview.tenant} - {contractPreview.property}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleDownloadContract(contractPreview.contractUrl)}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  下载
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleClosePreview}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+            <div className="flex-1 p-8 overflow-auto">
+              {contractPreview.contractData ? (
+                <div className="max-w-3xl mx-auto">
+                  <div className="text-center mb-8">
+                    <h1 className="text-2xl font-bold mb-4">房屋租赁合同</h1>
+                    <p className="text-gray-600">合同编号：{contractPreview.contractData.contractNumber}</p>
+                  </div>
+
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="font-medium">出租方（甲方）</p>
+                        <p className="text-gray-600">李兴</p>
+                      </div>
+                      <div>
+                        <p className="font-medium">承租方（乙方）</p>
+                        <p className="text-gray-600">{contractPreview.tenant}</p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="font-medium mb-2">房屋信息</p>
+                      <p className="text-gray-600">{contractPreview.property}</p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="font-medium">租期</p>
+                        <p className="text-gray-600">
+                          {contractPreview.contractData.startDate} 至 {contractPreview.contractData.endDate}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="font-medium">月租金</p>
+                        <p className="text-gray-600">{contractPreview.contractData.monthlyRent}</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="font-medium">押金</p>
+                        <p className="text-gray-600">{contractPreview.contractData.deposit}</p>
+                      </div>
+                      <div>
+                        <p className="font-medium">支付方式</p>
+                        <p className="text-gray-600">{contractPreview.contractData.paymentMethod}</p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="font-medium mb-2">合同条款</p>
+                      <ul className="list-disc list-inside space-y-2 text-gray-600">
+                        {contractPreview.contractData.terms.map((term, index) => (
+                          <li key={index}>{term}</li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 mt-8">
+                      <div>
+                        <p className="font-medium">甲方签字</p>
+                        <p className="text-gray-600">{contractPreview.contractData.signatures.landlord}</p>
+                      </div>
+                      <div>
+                        <p className="font-medium">乙方签字</p>
+                        <p className="text-gray-600">{contractPreview.contractData.signatures.tenant}</p>
+                      </div>
+                    </div>
+
+                    <div className="text-center text-gray-600 mt-4">
+                      签署日期：{contractPreview.contractData.signatures.date}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center h-full">
+                  <p className="text-gray-500">加载中...</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      {deleteDialog.isOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <div className="flex items-center gap-3 mb-4">
+              <AlertTriangle className="h-6 w-6 text-red-500" />
+              <h3 className="text-lg font-semibold">确认删除</h3>
+            </div>
+            <p className="text-gray-600 mb-6">
+              您确定要删除房源 "{deleteDialog.propertyTitle}" 吗？此操作无法撤销。
+            </p>
+            <div className="flex justify-end gap-3">
+              <Button
+                variant="outline"
+                onClick={cancelDelete}
+              >
+                取消
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={confirmDelete}
+              >
+                确认删除
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 } 
