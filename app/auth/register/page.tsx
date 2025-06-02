@@ -76,6 +76,7 @@ export default function RegisterPage() {
       return
     }
 
+
     try {
       const response = await fetch("http://localhost:5001/api/v1/auth/register", {
         method: "POST",
@@ -117,16 +118,21 @@ export default function RegisterPage() {
 
       // 存储认证数据
       localStorage.setItem("auth_token", data.access_token)
-      localStorage.setItem("user_role", data.user.role)
-      localStorage.setItem("user_info", JSON.stringify(data.user))
+      localStorage.setItem("user_role", formData.role)
+      localStorage.setItem("user_info", JSON.stringify({
+        username: formData.username,
+        email: formData.email,
+        role: formData.role,
+        phone: formData.phone
+      }))
 
       // 根据用户角色重定向
-      switch (data.user.role) {
+      switch (formData.role) {
         case "admin":
           router.push("/dashboard/admin")
           break
         case "landlord":
-          router.push("/dashboard/properties")
+          router.push("/dashboard/landlord")
           break
         case "tenant":
           router.push("/dashboard/tenant")

@@ -61,12 +61,12 @@ export default function LoginPage() {
       }
 
       localStorage.setItem("auth_token", data.access_token)
-      localStorage.setItem("user_role", data.user.role)
+      localStorage.setItem("user_role", data.role)
       localStorage.setItem("user_info", JSON.stringify(data.user))
 
-      if (data.user.role === "admin") {
+      if (data.role === "admin") {
         router.push("/dashboard/admin")
-      } else if (data.user.role === "landlord") {
+      } else if (data.role === "landlord") {
         router.push("/dashboard/landlord")
       } else {
         router.push("/dashboard/tenant")
