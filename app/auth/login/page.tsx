@@ -30,34 +30,49 @@ export default function LoginPage() {
     setError("")
 
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      const response = await fetch("http://localhost:5001/api/v1/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          username_or_email: formData.username_or_email,
+          password: formData.password,
+        }),
+      })
 
-      // Mock successful login
-      const mockResponse = {
-        token: "mock_token",
-        user: {
-          id: 1,
-          username: formData.username_or_email,
-          role: formData.username_or_email.includes("admin") ? "admin" : 
-                formData.username_or_email.includes("landlord") ? "landlord" : "tenant"
+      const data = await response.json()
+
+      if (!response.ok) {
+        if (response.status === 400) {
+          throw new Error(data.message || "请求参数错误")
+        } else if (response.status === 401) {
+          throw new Error(data.message || "用户名或密码错误")
+        } else {
+          throw new Error(data.message || "登录失败，请稍后重试")
         }
       }
 
-      // Store auth data
-      localStorage.setItem("auth_token", mockResponse.token)
-      localStorage.setItem("user_role", mockResponse.user.role)
+      if (data.mfa_required) {
+        localStorage.setItem("temp_auth_token", data.access_token)
+        localStorage.setItem("temp_user_info", JSON.stringify(data.user))
+        router.push("/auth/mfa-verify")
+        return
+      }
 
-      // Redirect based on role
-      if (mockResponse.user.role === "admin") {
+      localStorage.setItem("auth_token", data.access_token)
+      localStorage.setItem("user_role", data.user.role)
+      localStorage.setItem("user_info", JSON.stringify(data.user))
+
+      if (data.user.role === "admin") {
         router.push("/dashboard/admin")
-      } else if (mockResponse.user.role === "landlord") {
+      } else if (data.user.role === "landlord") {
         router.push("/dashboard/landlord")
       } else {
         router.push("/dashboard/tenant")
       }
     } catch (err) {
-      setError("登录失败，请检查用户名和密码")
+      setError(err instanceof Error ? err.message : "登录失败，请稍后重试")
     } finally {
       setIsLoading(false)
     }
@@ -185,3 +200,4 @@ export default function LoginPage() {
     </div>
   )
 }
+
