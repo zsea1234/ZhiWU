@@ -22,6 +22,7 @@ export default function LoginPage() {
     password: "",
     remember_me: false,
   })
+  const [showRoleSelection, setShowRoleSelection] = useState(true)
   const router = useRouter()
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -42,6 +43,7 @@ export default function LoginPage() {
       })
 
       const data = await response.json()
+      console.log("API Response Data:", data)
 
       if (!response.ok) {
         if (response.status === 400) {
@@ -55,22 +57,18 @@ export default function LoginPage() {
 
       if (data.mfa_required) {
         localStorage.setItem("temp_auth_token", data.access_token)
-        localStorage.setItem("temp_user_info", JSON.stringify(data.user))
+        if (data.user) {
+          localStorage.setItem("temp_user_info", JSON.stringify(data.user))
+        }
         router.push("/auth/mfa-verify")
         return
       }
 
       localStorage.setItem("auth_token", data.access_token)
-      localStorage.setItem("user_role", data.role)
-      localStorage.setItem("user_info", JSON.stringify(data.user))
-
-      if (data.role === "admin") {
-        router.push("/dashboard/admin")
-      } else if (data.role === "landlord") {
-        router.push("/dashboard/landlord")
-      } else {
-        router.push("/dashboard/tenant")
+      if (data.user) {
+        localStorage.setItem("user_info", JSON.stringify(data.user))
       }
+      setShowRoleSelection(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : "登录失败，请稍后重试")
     } finally {
@@ -81,6 +79,11 @@ export default function LoginPage() {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
     setFormData((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const handleRoleSelect = (role: string) => {
+    localStorage.setItem("user_role", role)
+    router.push("/dashboard/" + role.toLowerCase())
   }
 
   return (
@@ -100,81 +103,98 @@ export default function LoginPage() {
             <CardDescription>登录您的账户以继续使用服务</CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {error && (
-                <Alert variant="destructive">
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
+            {error && (
+              <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
 
-              <div className="space-y-2">
-                <Label htmlFor="username_or_email">用户名或邮箱</Label>
-                <Input
-                  id="username_or_email"
-                  name="username_or_email"
-                  type="text"
-                  placeholder="请输入用户名或邮箱"
-                  value={formData.username_or_email}
-                  onChange={handleInputChange}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="password">密码</Label>
-                <div className="relative">
-                  <Input
-                    id="password"
-                    name="password"
-                    type={showPassword ? "text" : "password"}
-                    placeholder="请输入密码"
-                    value={formData.password}
-                    onChange={handleInputChange}
-                    required
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                    onClick={() => setShowPassword(!showPassword)}
-                  >
-                    {showPassword ? (
-                      <EyeOff className="h-4 w-4 text-gray-400" />
-                    ) : (
-                      <Eye className="h-4 w-4 text-gray-400" />
-                    )}
+            {/* Role Selection UI */}
+            {showRoleSelection ? (
+              <div className="space-y-4">
+                <p className="text-center text-sm text-gray-700">请选择您的角色以继续:</p>
+                <div className="flex justify-center space-x-4">
+                  <Button onClick={() => handleRoleSelect("admin")}>管理员</Button>
+                  <Button onClick={() => handleRoleSelect("landlord")}>房东</Button>
+                  <Button onClick={() => handleRoleSelect("tenant")}>租客</Button>
+                </div>
+                <div className="text-center mt-4">
+                  <Button variant="link" onClick={() => setShowRoleSelection(false)}>
+                    返回登录
                   </Button>
                 </div>
               </div>
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="remember_me"
-                    checked={formData.remember_me}
-                    onCheckedChange={(checked) => setFormData((prev) => ({ ...prev, remember_me: checked as boolean }))}
+            ) : (
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="username_or_email">用户名或邮箱</Label>
+                  <Input
+                    id="username_or_email"
+                    name="username_or_email"
+                    type="text"
+                    placeholder="请输入用户名或邮箱"
+                    value={formData.username_or_email}
+                    onChange={handleInputChange}
+                    required
                   />
-                  <Label htmlFor="remember_me" className="text-sm">
-                    记住我
-                  </Label>
                 </div>
-                <Link href="/auth/forgot-password" className="text-sm text-blue-600 hover:underline">
-                  忘记密码？
-                </Link>
-              </div>
 
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    登录中...
-                  </>
-                ) : (
-                  "登录"
-                )}
-              </Button>
-            </form>
+                <div className="space-y-2">
+                  <Label htmlFor="password">密码</Label>
+                  <div className="relative">
+                    <Input
+                      id="password"
+                      name="password"
+                      type={showPassword ? "text" : "password"}
+                      placeholder="请输入密码"
+                      value={formData.password}
+                      onChange={handleInputChange}
+                      required
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-4 w-4 text-gray-400" />
+                      ) : (
+                        <Eye className="h-4 w-4 text-gray-400" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="remember_me"
+                      checked={formData.remember_me}
+                      onCheckedChange={(checked) => setFormData((prev) => ({ ...prev, remember_me: checked as boolean }))}
+                    />
+                    <Label htmlFor="remember_me" className="text-sm">
+                      记住我
+                    </Label>
+                  </div>
+                  <Link href="/auth/forgot-password" className="text-sm text-blue-600 hover:underline">
+                    忘记密码？
+                  </Link>
+                </div>
+
+                <Button type="submit" className="w-full" disabled={isLoading}>
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      登录中...
+                    </>
+                  ) : (
+                    "登录"
+                  )}
+                </Button>
+              </form>
+            )}
 
             <div className="mt-6 text-center">
               <p className="text-sm text-gray-600">
