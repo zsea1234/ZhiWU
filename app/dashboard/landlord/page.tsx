@@ -20,17 +20,17 @@ import {
   Download,
   Trash2,
   AlertTriangle,
+  Loader2,
 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-
-// Mock user data
-const mockUser = {
-  id: 1,
-  username: "李兴",
-  role: "landlord",
-  email: "lisi@example.com",
-}
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import type { Property } from '../../types/property'
+import { propertyApi } from '../../services/api/properties'
+import { useToast } from "@/components/ui/use-toast"
 
 interface Message {
   id: number
@@ -41,33 +41,18 @@ interface Message {
   isTenant?: boolean
 }
 
-interface Property {
-  id: number
-  title: string
-  address: string
-  type: string
-  area: number
-  rooms: number
-  price: number
-  status: "已出租" | "空置" | "待维修"
-  images: string[]
-  facilities: string[]
-  description: string
-  createdAt: string
-  tenant?: {
-    name: string
-    phone: string
-    startDate: string
-    endDate: string
-  }
-}
-
 interface Booking {
   id: number
-  name: string
-  property: string
-  time: string
-  status: "待确认" | "已确认" | "已完成"
+  property_id: number
+  tenant_id: number
+  landlord_id: number
+  requested_datetime: string
+  notes_for_landlord: string | null
+  landlord_notes: string | null
+  status: 'PENDING_CONFIRMATION' | 'CONFIRMED_BY_LANDLORD' | 'CANCELLED_BY_LANDLORD'
+  created_at: string
+  updated_at: string
+  is_deleted: boolean
 }
 
 interface Lease {
@@ -110,175 +95,122 @@ interface DeleteDialog {
 }
 
 export default function LandlordDashboard() {
-  const [user, setUser] = useState(mockUser)
+  const router = useRouter()
+  const { toast } = useToast()
+  const [user, setUser] = useState<any>(null)
   const [selectedChat, setSelectedChat] = useState<Message | null>(null)
   const [messageInput, setMessageInput] = useState("")
-  const [bookings, setBookings] = useState<Booking[]>([
-    { id: 1, name: "张三", property: "朝阳区幸福小区 2室1厅", time: "明天 14:00", status: "待确认" },
-    { id: 2, name: "李四", property: "海淀区学院路 1室1厅", time: "后天 10:30", status: "已确认" },
-    { id: 3, name: "王五", property: "西城区金融街 3室2厅", time: "周六 15:00", status: "待确认" },
-  ])
-  const [leases, setLeases] = useState<Lease[]>([
-    { 
-      id: 1, 
-      tenant: "张三", 
-      property: "朝阳区幸福小区 2室1厅", 
-      startDate: "2024-01-01", 
-      endDate: "2024-12-31", 
-      rent: "¥5,000/月",
-      contractUrl: "/contracts/lease-1.pdf"
-    },
-    { 
-      id: 2, 
-      tenant: "李四", 
-      property: "西城区金融街 3室2厅", 
-      startDate: "2024-02-01", 
-      endDate: "2025-01-31", 
-      rent: "¥8,000/月",
-      contractUrl: "/contracts/lease-2.pdf"
-    },
-  ])
+  const [bookings, setBookings] = useState<Booking[]>([])
+  const [leases, setLeases] = useState<Lease[]>([])
   const [contractPreview, setContractPreview] = useState<ContractPreview>({
     isOpen: false,
     contractUrl: "",
     tenant: "",
     property: ""
   })
-  const [properties, setProperties] = useState<Property[]>([
-    {
-      id: 1,
-      title: "朝阳区幸福小区 2室1厅",
-      address: "北京市朝阳区幸福小区3号楼2单元501",
-      type: "住宅",
-      area: 85,
-      rooms: 2,
-      price: 5000,
-      status: "已出租",
-      images: [
-        "/properties/property-1-1.jpg",
-        "/properties/property-1-2.jpg",
-        "/properties/property-1-3.jpg"
-      ],
-      facilities: ["空调", "热水器", "洗衣机", "冰箱", "电视", "宽带"],
-      description: "精装修两居室，采光好，交通便利，近地铁站。",
-      createdAt: "2024-01-01",
-      tenant: {
-        name: "张三",
-        phone: "13800138000",
-        startDate: "2024-01-01",
-        endDate: "2024-12-31"
-      }
-    },
-    {
-      id: 2,
-      title: "海淀区学院路 1室1厅",
-      address: "北京市海淀区学院路8号院2号楼1单元303",
-      type: "住宅",
-      area: 45,
-      rooms: 1,
-      price: 3500,
-      status: "空置",
-      images: [
-        "/properties/property-2-1.jpg",
-        "/properties/property-2-2.jpg"
-      ],
-      facilities: ["空调", "热水器", "洗衣机", "冰箱", "宽带"],
-      description: "温馨一居室，适合单身或情侣居住，近大学城。",
-      createdAt: "2024-02-01"
-    },
-    {
-      id: 3,
-      title: "西城区金融街 3室2厅",
-      address: "北京市西城区金融街15号院1号楼2单元801",
-      type: "住宅",
-      area: 120,
-      rooms: 3,
-      price: 8000,
-      status: "已出租",
-      images: [
-        "/properties/property-3-1.jpg",
-        "/properties/property-3-2.jpg",
-        "/properties/property-3-3.jpg"
-      ],
-      facilities: ["空调", "热水器", "洗衣机", "冰箱", "电视", "宽带", "烤箱"],
-      description: "豪华三居室，精装修，家具家电齐全，近金融街。",
-      createdAt: "2024-01-15",
-      tenant: {
-        name: "李四",
-        phone: "13900139000",
-        startDate: "2024-02-01",
-        endDate: "2025-01-31"
-      }
-    }
-  ])
+  const [properties, setProperties] = useState<Property[]>([])
+  const [loading, setLoading] = useState(true)
   const [deleteDialog, setDeleteDialog] = useState<DeleteDialog>({
     isOpen: false,
     propertyId: null,
     propertyTitle: ""
   })
-  const router = useRouter()
+  const [createDialogOpen, setCreateDialogOpen] = useState(false)
+  const [newProperty, setNewProperty] = useState({
+    title: '',
+    address_line1: '',
+    city: '',
+    property_type: '',
+    area_sqm: '',
+    rent_price_monthly: '',
+    bedrooms: '',
+    description_text: '',
+    amenities: [] as string[],
+    rules: [] as string[],
+    available_date: ''
+  })
+  const [pendingBookings, setPendingBookings] = useState<Booking[]>([])
+  const [isLoadingBookings, setIsLoadingBookings] = useState(true)
 
-  const mockContractData: Record<string, ContractData> = {
-    "lease-1": {
-      contractNumber: "HT2024001",
-      startDate: "2024-01-01",
-      endDate: "2024-12-31",
-      monthlyRent: "¥5,000",
-      deposit: "¥5,000",
-      paymentMethod: "银行转账",
-      terms: [
-        "租期一年，到期可续签",
-        "每月1号前支付当月租金",
-        "水电费由租客承担",
-        "不得擅自转租或分租",
-        "保持房屋整洁，爱护设施",
-        "退租时需提前30天通知"
-      ],
-      signatures: {
-        landlord: "李兴",
-        tenant: "张三",
-        date: "2023-12-25"
+  useEffect(() => {
+    // 从localStorage获取用户信息
+    const userInfo = localStorage.getItem('user_info')
+    if (userInfo) {
+      try {
+        const parsedUser = JSON.parse(userInfo)
+        console.log('User info loaded:', parsedUser)
+        setUser(parsedUser)
+      } catch (error) {
+        console.error('Failed to parse user info:', error)
       }
-    },
-    "lease-2": {
-      contractNumber: "HT2024002",
-      startDate: "2024-02-01",
-      endDate: "2025-01-31",
-      monthlyRent: "¥8,000",
-      deposit: "¥8,000",
-      paymentMethod: "银行转账",
-      terms: [
-        "租期一年，到期可续签",
-        "每月1号前支付当月租金",
-        "水电费由租客承担",
-        "不得擅自转租或分租",
-        "保持房屋整洁，爱护设施",
-        "退租时需提前30天通知"
-      ],
-      signatures: {
-        landlord: "李兴",
-        tenant: "李四",
-        date: "2024-01-20"
+    } else {
+      console.log('No user info found in localStorage')
+    }
+  }, [])
+
+  useEffect(() => {
+    if (user?.id) {
+      console.log('User ID available, fetching properties for user:', user.id)
+      fetchProperties()
+    } else {
+      console.log('User ID not available, skipping fetchProperties')
+    }
+  }, [user?.id])
+
+  const fetchProperties = async () => {
+    try {
+      setLoading(true)
+      console.log('Current user:', user)
+      const url = 'http://localhost:5001/api/v1/properties/search?landlord_id=' + user.id + '&status=vacant'
+      console.log('Fetching properties from URL:', url)
+      const dataResponse = await fetch(url, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+        },
+        mode: 'cors'
+      })
+      if (!dataResponse.ok) {
+        throw new Error('Failed to fetch properties')
       }
+      const data = await dataResponse.json()
+      console.log('Properties fetched successfully:', data)
+      setProperties(data.data.properties)
+    } catch (error) {
+      console.error('Failed to fetch properties:', error)
+      toast({
+        title: "Error",
+        description: "Failed to fetch properties",
+        variant: "destructive"
+      })
+    } finally {
+      setLoading(false)
     }
   }
 
   const handleConfirmBooking = (bookingId: number) => {
-    setBookings(bookings.map(booking => 
-      booking.id === bookingId 
-        ? { ...booking, status: "已确认" }
+    setBookings(bookings.map(booking =>
+      booking.id === bookingId
+        ? { ...booking, status: 'CONFIRMED_BY_LANDLORD' }
+        : booking
+    ))
+  }
+
+  const handleCancelBooking = (bookingId: number) => {
+    setBookings(bookings.map(booking =>
+      booking.id === bookingId
+        ? { ...booking, status: 'CANCELLED_BY_LANDLORD' }
         : booking
     ))
   }
 
   const handleViewContract = (lease: Lease) => {
-    const contractId = lease.contractUrl?.split('/').pop()?.replace('.pdf', '') || ''
     setContractPreview({
       isOpen: true,
       contractUrl: lease.contractUrl || "",
       tenant: lease.tenant,
       property: lease.property,
-      contractData: mockContractData[contractId]
+      contractData: undefined // 真实环境下应从API获取合同数据
     })
   }
 
@@ -290,45 +222,224 @@ export default function LandlordDashboard() {
     window.open(url, '_blank')
   }
 
-  const handleDeleteProperty = (propertyId: number, propertyTitle: string) => {
-    setDeleteDialog({
-      isOpen: true,
-      propertyId,
-      propertyTitle
-    })
-  }
-
-  const confirmDelete = () => {
-    if (deleteDialog.propertyId) {
-      setProperties(properties.filter(p => p.id !== deleteDialog.propertyId))
+  const handleDeleteProperty = async (propertyId: number) => {
+    try {
+      const authToken = localStorage.getItem('auth_token')
+      console.log('Auth token:', authToken)
+      if (!authToken) {
+        toast({
+          title: "Error",
+          description: "Please login again",
+          variant: "destructive"
+        })
+        return
+      }
+      console.log('Deleting property with ID:', propertyId)
+      console.log('Request URL:', `http://localhost:5001/api/v1/properties/${propertyId}`)
+      console.log('Request headers:', {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`
+      })
+      const response = await fetch(`http://localhost:5001/api/v1/properties/${propertyId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        mode: 'cors'
+      })
+      console.log('Response status:', response.status)
+      const responseData = await response.json()
+      console.log('Response data:', responseData)
+      if (!response.ok) {
+        throw new Error('Failed to delete property')
+      }
+      setProperties(properties.filter(p => p.id !== propertyId))
       setDeleteDialog({
         isOpen: false,
         propertyId: null,
         propertyTitle: ""
       })
+      toast({
+        title: "Success",
+        description: "Property deleted successfully"
+      })
+    } catch (error) {
+      console.error('Failed to delete property:', error)
+      toast({
+        title: "Error",
+        description: "Failed to delete property",
+        variant: "destructive"
+      })
     }
   }
 
-  const cancelDelete = () => {
-    setDeleteDialog({
-      isOpen: false,
-      propertyId: null,
-      propertyTitle: ""
-    })
+  const handleCreateProperty = async () => {
+    console.log('handleCreateProperty called')
+    try {
+      const propertyData = {
+        ...newProperty,
+        area_sqm: parseFloat(newProperty.area_sqm),
+        rent_price_monthly: parseFloat(newProperty.rent_price_monthly),
+        bedrooms: parseInt(newProperty.bedrooms),
+        postal_code: '000000',
+        country_code: 'CN',
+        living_rooms: 1,
+        bathrooms: 1,
+        deposit_amount: parseFloat(newProperty.rent_price_monthly),
+      }
+
+      const response = await fetch('http://localhost:5001/api/v1/properties', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+        },
+        body: JSON.stringify(propertyData),
+        mode: 'cors'
+      })
+      if (!response.ok) {
+        throw new Error('Failed to create property')
+      }
+      const data = await response.json()
+      console.log('Property created successfully:', data)
+      setCreateDialogOpen(false)
+      setNewProperty({
+        title: '',
+        address_line1: '',
+        city: '',
+        property_type: '',
+        area_sqm: '',
+        rent_price_monthly: '',
+        bedrooms: '',
+        description_text: '',
+        amenities: [],
+        rules: [],
+        available_date: ''
+      })
+      fetchProperties()
+      toast({
+        title: "Success",
+        description: "Property created successfully"
+      })
+    } catch (error) {
+      console.error('Failed to create property:', error)
+      toast({
+        title: "Error",
+        description: "Failed to create property",
+        variant: "destructive"
+      })
+    }
   }
 
-  useEffect(() => {
-    // Check authentication
-    const token = localStorage.getItem("auth_token")
-    if (!token) {
-      router.push("/auth/login")
-      return
+  const handleTabChange = (value: string) => {
+    console.log('Tab changed to:', value);
+    if (value === 'bookings') {
+      console.log('Fetching pending bookings...');
+      fetchPendingBookings();
+    }
+  }
+
+  const fetchPendingBookings = async () => {
+    console.log('Starting to fetch pending bookings...');
+    setIsLoadingBookings(true);
+    try {
+      const response = await fetch('http://localhost:5001/api/v1/bookings/landlord/pending', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+        }
+      });
+      
+      console.log('Response status:', response.status);
+      const data = await response.json();
+      console.log('Received bookings data:', data);
+      
+      if (response.ok) {
+        const bookings = data.data.items || [];
+        console.log('Setting pending bookings:', bookings);
+        setPendingBookings(bookings);
+        toast({
+          title: "Success",
+          description: `获取到 ${bookings.length} 条预约记录`
+        });
+      } else {
+        console.error('Failed to fetch bookings:', data);
+        toast({
+          title: "Error",
+          description: data.message || "获取预约列表失败",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching pending bookings:', error);
+      toast({
+        title: "Error",
+        description: "获取预约列表时发生错误",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoadingBookings(false);
+      console.log('Finished fetching pending bookings');
+    }
+  }
+
+  const handleBookingStatus = async (bookingId: number, status: 'CONFIRMED_BY_LANDLORD' | 'CANCELLED_BY_LANDLORD') => {
+    console.log('handleBookingStatus called with:', { bookingId, status });
+    
+    if (!bookingId) {
+      console.error('Invalid bookingId:', bookingId);
+      toast({
+        title: "Error",
+        description: "无效的预约ID",
+        variant: "destructive"
+      });
+      return;
     }
 
-    // Get user role from localStorage or API
-    const role = localStorage.getItem("user_role") || "landlord"
-    setUser((prev) => ({ ...prev, role }))
-  }, [router])
+    try {
+      const url = `http://localhost:5001/api/v1/bookings/${bookingId}/status`;
+      console.log('Sending request to:', url);
+      
+      const response = await fetch(url, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+        },
+        body: JSON.stringify({ status })
+      });
+
+      console.log('Status update response:', response.status);
+      const data = await response.json();
+      console.log('Status update data:', data);
+
+      if (response.ok) {
+        toast({
+          title: "Success",
+          description: status === 'CONFIRMED_BY_LANDLORD' ? "预约已确认" : "预约已取消"
+        });
+        // 刷新预约列表
+        fetchPendingBookings();
+      } else {
+        throw new Error(data.message || '更新预约状态失败');
+      }
+    } catch (error) {
+      console.error('Error updating booking status:', error);
+      toast({
+        title: "Error",
+        description: "更新预约状态失败",
+        variant: "destructive"
+      });
+    }
+  }
+
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -369,7 +480,7 @@ export default function LandlordDashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">房源总数</p>
-                  <p className="text-2xl font-bold">5</p>
+                  <p className="text-2xl font-bold">{properties.length}</p>
                 </div>
                 <Home className="h-8 w-8 text-blue-600" />
               </div>
@@ -380,7 +491,7 @@ export default function LandlordDashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">已出租</p>
-                  <p className="text-2xl font-bold text-green-600">3</p>
+                  <p className="text-2xl font-bold text-green-600">{properties.filter(p => p.status === 'rented').length}</p>
                 </div>
                 <Users className="h-8 w-8 text-green-600" />
               </div>
@@ -391,7 +502,7 @@ export default function LandlordDashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">月收入</p>
-                  <p className="text-2xl font-bold text-green-600">¥15,000</p>
+                  <p className="text-2xl font-bold text-green-600">¥{properties.reduce((total, property) => total + property.rent_price_monthly, 0)}</p>
                 </div>
                 <TrendingUp className="h-8 w-8 text-green-600" />
               </div>
@@ -402,7 +513,7 @@ export default function LandlordDashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">待处理</p>
-                  <p className="text-2xl font-bold text-orange-600">2</p>
+                  <p className="text-2xl font-bold text-orange-600">{properties.filter(p => p.status === 'vacant').length}</p>
                 </div>
                 <AlertCircle className="h-8 w-8 text-orange-600" />
               </div>
@@ -411,7 +522,7 @@ export default function LandlordDashboard() {
         </div>
 
         {/* Main Content */}
-        <Tabs defaultValue="overview" className="space-y-6">
+        <Tabs defaultValue="overview" className="space-y-6" onValueChange={handleTabChange}>
           <TabsList>
             <TabsTrigger value="overview">概览</TabsTrigger>
             <TabsTrigger value="properties">房源管理</TabsTrigger>
@@ -431,24 +542,31 @@ export default function LandlordDashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {[
-                      { name: "朝阳区幸福小区 2室1厅", status: "已出租", rent: "¥5,000/月" },
-                      { name: "海淀区学院路 1室1厅", status: "空置", rent: "¥3,500/月" },
-                      { name: "西城区金融街 3室2厅", status: "已出租", rent: "¥8,000/月" },
-                    ].map((property, i) => (
-                      <div key={i} className="flex justify-between items-center">
-                        <div>
-                          <p className="font-medium">{property.name}</p>
-                          <p className="text-sm text-gray-600">{property.rent}</p>
-                        </div>
-                        <Badge variant={property.status === "已出租" ? "default" : "secondary"}>
-                          {property.status}
-                        </Badge>
+                    {loading ? (
+                      <div className="text-center py-4">
+                        <Loader2 className="h-6 w-6 animate-spin mx-auto" />
+                        <p className="text-sm text-gray-500 mt-2">加载中...</p>
                       </div>
-                    ))}
+                    ) : properties.length === 0 ? (
+                      <div className="text-center py-4">
+                        <p className="text-gray-500">暂无房源</p>
+                      </div>
+                    ) : (
+                      properties.map((property) => (
+                        <div key={property.id} className="flex justify-between items-center">
+                          <div>
+                            <p className="font-medium">{property.title}</p>
+                            <p className="text-sm text-gray-600">¥{property.rent_price_monthly}/月</p>
+                          </div>
+                          <Badge variant={property.status === "rented" ? "default" : "secondary"}>
+                            {property.status === "rented" ? "已出租" : "空置"}
+                          </Badge>
+                        </div>
+                      ))
+                    )}
                   </div>
                   <Link href="/dashboard/landlord/properties/new">
-                    <Button variant="outline" className="w-full mt-4">
+                    <Button>
                       <Plus className="h-4 w-4 mr-2" />
                       发布新房源
                     </Button>
@@ -496,79 +614,86 @@ export default function LandlordDashboard() {
                 </Link>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {properties.map((property) => (
-                  <Card key={property.id} className="overflow-hidden">
-                    <div className="relative h-48">
-                      <img
-                        src={property.images[0]}
-                        alt={property.title}
-                        className="w-full h-full object-cover"
-                      />
-                      <Badge
-                        variant={
-                          property.status === "已出租"
-                            ? "default"
-                            : property.status === "空置"
-                            ? "secondary"
-                            : "destructive"
-                        }
-                        className="absolute top-2 right-2"
-                      >
-                        {property.status}
-                      </Badge>
-                    </div>
-                    <CardContent className="p-4">
-                      <h3 className="font-semibold text-lg mb-2">{property.title}</h3>
-                      <div className="space-y-2 text-sm text-gray-600">
-                        <p>{property.address}</p>
-                        <div className="flex justify-between">
-                          <span>{property.area}㎡</span>
-                          <span>{property.rooms}室</span>
-                          <span className="text-green-600 font-medium">¥{property.price}/月</span>
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {property.facilities.slice(0, 3).map((facility, index) => (
-                            <Badge key={index} variant="outline" className="text-xs">
-                              {facility}
-                            </Badge>
-                          ))}
-                          {property.facilities.length > 3 && (
-                            <Badge variant="outline" className="text-xs">
-                              +{property.facilities.length - 3}
-                            </Badge>
-                          )}
-                        </div>
-                        {property.tenant && (
-                          <div className="mt-2 pt-2 border-t">
-                            <p className="text-sm">
-                              租客：{property.tenant.name}
-                              <span className="ml-2 text-gray-500">
-                                {property.tenant.startDate} 至 {property.tenant.endDate}
-                              </span>
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                      <div className="mt-4 flex justify-end gap-2">
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => handleDeleteProperty(property.id, property.title)}
+              {loading ? (
+                <div className="text-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin mx-auto" />
+                  <p className="text-sm text-gray-500 mt-2">加载中...</p>
+                </div>
+              ) : properties.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-gray-500">暂无房源</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {properties.map((property) => (
+                    <Card key={property.id} className="overflow-hidden">
+                      <div className="relative h-48">
+                        <img
+                          src={property.main_image_url || "/placeholder.svg"}
+                          alt={property.title}
+                          className="w-full h-full object-cover"
+                        />
+                        <Badge
+                          variant={
+                            property.status === "rented"
+                              ? "default"
+                              : property.status === "vacant"
+                                ? "secondary"
+                                : "destructive"
+                          }
+                          className="absolute top-2 right-2"
                         >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          删除
-                        </Button>
-                        <Link href={`/properties/${property.id}`}>
-                          <Button variant="outline" size="sm">
-                            查看详情
-                          </Button>
-                        </Link>
+                          {property.status === "rented" ? "已出租" : "空置"}
+                        </Badge>
                       </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+                      <CardContent className="p-4">
+                        <h3 className="font-semibold text-lg mb-2">{property.title}</h3>
+                        <div className="space-y-2 text-sm text-gray-600">
+                          <p>{property.address_line1}</p>
+                          <div className="flex justify-between">
+                            <span>{property.area_sqm}㎡</span>
+                            <span>{property.bedrooms}室</span>
+                            <span className="text-green-600 font-medium">¥{property.rent_price_monthly}/月</span>
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            {property.amenities.slice(0, 3).map((amenity: string, index: number) => (
+                              <Badge key={index} variant="outline" className="text-xs">
+                                {amenity}
+                              </Badge>
+                            ))}
+                            {property.amenities.length > 3 && (
+                              <Badge variant="outline" className="text-xs">
+                                +{property.amenities.length - 3}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                        <div className="mt-4 flex justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setDeleteDialog({
+                                isOpen: true,
+                                propertyId: property.id,
+                                propertyTitle: property.title
+                              })
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            删除
+                          </Button>
+                          <Link href={`/properties/${property.id}`}>
+                            <Button variant="outline" size="sm">
+                              查看详情
+                            </Button>
+                          </Link>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
             </div>
           </TabsContent>
 
@@ -580,39 +705,54 @@ export default function LandlordDashboard() {
                   <CardDescription>待处理的看房预约</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-4">
-                    {bookings.map((booking) => (
-                      <div key={booking.id} className="flex justify-between items-center p-4 border rounded-lg">
-                        <div>
-                          <p className="font-medium">{booking.name}</p>
-                          <p className="text-sm text-gray-600">{booking.property}</p>
-                          <p className="text-sm text-gray-500">{booking.time}</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {booking.status === "待确认" && (
+                  {isLoadingBookings ? (
+                    <div className="flex justify-center items-center py-4">
+                      <Loader2 className="h-6 w-6 animate-spin" />
+                      <span className="ml-2">加载中...</span>
+                    </div>
+                  ) : pendingBookings.length === 0 ? (
+                    <div className="text-center py-8">
+                      <div className="mb-4">
+                        <AlertCircle className="h-12 w-12 text-gray-400 mx-auto" />
+                      </div>
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">暂无待处理预约</h3>
+                      <p className="text-gray-500">当有租客预约看房时，预约信息将显示在这里</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {pendingBookings.map((booking) => (
+                        <div key={booking.id} className="flex justify-between items-center p-4 border rounded-lg">
+                          <div>
+                            <p className="font-medium">预约时间：{new Date(booking.requested_datetime).toLocaleString()}</p>
+                            <p className="text-sm text-gray-600">租客备注：{booking.notes_for_landlord || '无'}</p>
+                            <p className="text-sm text-gray-500">创建时间：{new Date(booking.created_at).toLocaleString()}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
                             <Button
                               variant="default"
                               size="sm"
-                              onClick={() => handleConfirmBooking(booking.id)}
+                              onClick={() => {
+                                console.log('Confirm button clicked for booking:', booking);
+                                handleBookingStatus(booking.id, 'CONFIRMED_BY_LANDLORD');
+                              }}
                             >
                               确认预约
                             </Button>
-                          )}
-                          <Badge 
-                            variant={
-                              booking.status === "已确认" 
-                                ? "default" 
-                                : booking.status === "已完成"
-                                ? "secondary"
-                                : "destructive"
-                            }
-                          >
-                            {booking.status}
-                          </Badge>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => {
+                                console.log('Cancel button clicked for booking:', booking);
+                                handleBookingStatus(booking.id, 'CANCELLED_BY_LANDLORD');
+                              }}
+                            >
+                              取消预约
+                            </Button>
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -623,18 +763,18 @@ export default function LandlordDashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    <div className="flex justify-between items-center">
-                      <p className="text-sm text-gray-600">待确认预约</p>
-                      <p className="font-medium">{bookings.filter(b => b.status === "待确认").length}</p>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <p className="text-sm text-gray-600">已确认预约</p>
-                      <p className="font-medium">{bookings.filter(b => b.status === "已确认").length}</p>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <p className="text-sm text-gray-600">已完成预约</p>
-                      <p className="font-medium">{bookings.filter(b => b.status === "已完成").length}</p>
-                    </div>
+                    {[
+                      { label: '待确认预约', status: 'PENDING_CONFIRMATION' },
+                      { label: '已确认预约', status: 'CONFIRMED_BY_LANDLORD' },
+                      { label: '已取消预约', status: 'CANCELLED_BY_LANDLORD' }
+                    ].map((item) => (
+                      <div key={`stat-${item.status}`} className="flex justify-between items-center">
+                        <p className="text-sm text-gray-600">{item.label}</p>
+                        <p className="font-medium">
+                          {pendingBookings.filter(b => b.status === item.status).length}
+                        </p>
+                      </div>
+                    ))}
                   </div>
                 </CardContent>
               </Card>
@@ -712,15 +852,15 @@ export default function LandlordDashboard() {
                   <div className="space-y-4">
                     <div className="flex justify-between items-center">
                       <p className="text-sm text-gray-600">总租金收入</p>
-                      <p className="font-medium text-green-600">¥15,000</p>
+                      <p className="font-medium text-green-600">¥{properties.reduce((total, property) => total + property.rent_price_monthly, 0)}</p>
                     </div>
                     <div className="flex justify-between items-center">
                       <p className="text-sm text-gray-600">已收租金</p>
-                      <p className="font-medium text-green-600">¥13,000</p>
+                      <p className="font-medium text-green-600">¥{properties.reduce((total, property) => total + property.rent_price_monthly, 0)}</p>
                     </div>
                     <div className="flex justify-between items-center">
                       <p className="text-sm text-gray-600">待收租金</p>
-                      <p className="font-medium text-orange-600">¥2,000</p>
+                      <p className="font-medium text-orange-600">¥{properties.reduce((total, property) => total + property.rent_price_monthly, 0)}</p>
                     </div>
                   </div>
                 </CardContent>
@@ -829,9 +969,8 @@ export default function LandlordDashboard() {
                     ].map((message) => (
                       <div
                         key={message.id}
-                        className={`flex justify-between items-start p-3 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors ${
-                          selectedChat?.id === message.id ? "bg-gray-100" : ""
-                        }`}
+                        className={`flex justify-between items-start p-3 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors ${selectedChat?.id === message.id ? "bg-gray-100" : ""
+                          }`}
                         onClick={() => setSelectedChat(message)}
                       >
                         <div>
@@ -866,11 +1005,10 @@ export default function LandlordDashboard() {
                             className={`flex ${message.isTenant ? "justify-start" : "justify-end"}`}
                           >
                             <div
-                              className={`max-w-[70%] p-3 rounded-lg ${
-                                message.isTenant
+                              className={`max-w-[70%] p-3 rounded-lg ${message.isTenant
                                   ? "bg-gray-100"
                                   : "bg-blue-100"
-                              }`}
+                                }`}
                             >
                               <p className="font-medium">{message.sender}</p>
                               <p className="text-sm">{message.content}</p>
@@ -1026,33 +1164,32 @@ export default function LandlordDashboard() {
       )}
 
       {/* Delete Confirmation Dialog */}
-      {deleteDialog.isOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <div className="flex items-center gap-3 mb-4">
-              <AlertTriangle className="h-6 w-6 text-red-500" />
-              <h3 className="text-lg font-semibold">确认删除</h3>
-            </div>
-            <p className="text-gray-600 mb-6">
-              您确定要删除房源 "{deleteDialog.propertyTitle}" 吗？此操作无法撤销。
-            </p>
-            <div className="flex justify-end gap-3">
-              <Button
-                variant="outline"
-                onClick={cancelDelete}
-              >
-                取消
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={confirmDelete}
-              >
-                确认删除
-              </Button>
-            </div>
+      <Dialog open={deleteDialog.isOpen} onOpenChange={(open) => setDeleteDialog(prev => ({ ...prev, isOpen: open }))}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>确认删除</DialogTitle>
+          </DialogHeader>
+          <p>确定要删除这个房源吗？此操作不可撤销。</p>
+          <div className="flex justify-end gap-4">
+            <Button
+              variant="outline"
+              onClick={() => setDeleteDialog({
+                isOpen: false,
+                propertyId: null,
+                propertyTitle: ""
+              })}
+            >
+              取消
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => deleteDialog.propertyId && handleDeleteProperty(deleteDialog.propertyId)}
+            >
+              删除
+            </Button>
           </div>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 } 
