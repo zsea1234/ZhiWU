@@ -1,4 +1,5 @@
 import { api } from './client'
+import { Property } from "@/types/property"
 
 export interface PropertyType {
   id: number
@@ -111,30 +112,106 @@ export interface PaginatedResponse<T> {
   }
 }
 
-export const propertiesApi = {
-  list: async (params?: PropertyListParams) => {
+export interface PropertySearchParams {
+  keyword?: string
+  min_price?: number
+  max_price?: number
+  property_type?: string
+  city?: string
+  district?: string
+  min_area?: number
+  max_area?: number
+  amenities?: string[]
+  status?: string
+  landlord_id?: number
+  page?: number
+  per_page?: number
+}
+
+export interface PropertyCreateData {
+  title: string
+  address_line1: string
+  address_line2?: string
+  city: string
+  district?: string
+  postal_code: string
+  country_code: string
+  latitude?: number
+  longitude?: number
+  property_type: string
+  area_sqm: number
+  rent_price_monthly: number
+  deposit_amount: number
+  bedrooms: number
+  living_rooms: number
+  bathrooms: number
+  floor_level?: number
+  total_floors?: number
+  year_built?: number
+  description_text: string
+  furnishing_status?: string
+  amenities: string[]
+  rules: string[]
+  available_date: string
+  images?: File[]
+  videos?: File[]
+}
+
+export interface PropertyUpdateData extends Partial<PropertyCreateData> {
+  status?: 'vacant' | 'rented' | 'under_maintenance' | 'pending_approval' | 'delisted'
+}
+
+export interface PropertySearchResponse {
+  properties: Property[]
+  total: number
+  pages: number
+  current_page: number
+  per_page: number
+}
+
+export const propertyApi = {
+  // 搜索房源
+  search: async (params: PropertySearchParams): Promise<PropertySearchResponse> => {
     const queryParams = new URLSearchParams()
-    if (params) {
-      Object.entries(params).forEach(([key, value]) => {
-        if (value !== undefined) {
-          queryParams.append(key, String(value))
-        }
-      })
+    
+    if (params.keyword) queryParams.append('keyword', params.keyword)
+    if (params.min_price) queryParams.append('min_price', params.min_price.toString())
+    if (params.max_price) queryParams.append('max_price', params.max_price.toString())
+    if (params.property_type) queryParams.append('property_type', params.property_type)
+    if (params.city) queryParams.append('city', params.city)
+    if (params.district) queryParams.append('district', params.district)
+    if (params.min_area) queryParams.append('min_area', params.min_area.toString())
+    if (params.max_area) queryParams.append('max_area', params.max_area.toString())
+    if (params.amenities) params.amenities.forEach(a => queryParams.append('amenities', a))
+    if (params.status) queryParams.append('status', params.status)
+    if (params.landlord_id) queryParams.append('landlord_id', params.landlord_id.toString())
+    if (params.page) queryParams.append('page', params.page.toString())
+    if (params.per_page) queryParams.append('per_page', params.per_page.toString())
+
+    const response = await fetch(`/api/properties/search?${queryParams.toString()}`)
+    if (!response.ok) {
+      throw new Error('Failed to fetch properties')
     }
-    const queryString = queryParams.toString()
-    const endpoint = queryString ? `/properties?${queryString}` : '/properties'
-    return api.get<PaginatedResponse<PropertyType>>(endpoint)
+    const data = await response.json()
+    return data.data
   },
 
-  get: async (id: number) => {
-    return api.get<PropertyType>(`/properties/${id}`)
+  // 获取房源详情
+  getDetail: async (propertyId: number): Promise<Property> => {
+    const response = await fetch(`/api/properties/${propertyId}`)
+    if (!response.ok) {
+      throw new Error('Failed to fetch property detail')
+    }
+    const data = await response.json()
+    return data.data
   },
 
-  create: async (data: PropertyCreateInput) => {
+  // 创建房源
+  createProperty: async (propertyData: PropertyCreateData): Promise<Property> => {
     const formData = new FormData()
     
     // Add all text fields
-    Object.entries(data).forEach(([key, value]) => {
+    Object.entries(propertyData).forEach(([key, value]) => {
       if (key !== 'images' && key !== 'videos') {
         if (Array.isArray(value)) {
           formData.append(key, JSON.stringify(value))
@@ -145,31 +222,38 @@ export const propertiesApi = {
     })
 
     // Add files
-    if (data.images) {
-      data.images.forEach((file) => {
+    if (propertyData.images) {
+      propertyData.images.forEach((file) => {
         formData.append('images', file)
       })
     }
 
-    if (data.videos) {
-      data.videos.forEach((file) => {
+    if (propertyData.videos) {
+      propertyData.videos.forEach((file) => {
         formData.append('videos', file)
       })
     }
 
-    return api.post<PropertyType>('/properties', formData, {
+    const response = await fetch('/api/properties', {
+      method: 'POST',
       headers: {
-        // Let the browser set the Content-Type with boundary
-        'Content-Type': 'multipart/form-data',
+        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
       },
+      body: formData
     })
+    if (!response.ok) {
+      throw new Error('Failed to create property')
+    }
+    const data = await response.json()
+    return data.data
   },
 
-  update: async (id: number, data: PropertyUpdateInput) => {
+  // 更新房源
+  updateProperty: async (propertyId: number, propertyData: PropertyUpdateData): Promise<Property> => {
     const formData = new FormData()
     
     // Add all text fields
-    Object.entries(data).forEach(([key, value]) => {
+    Object.entries(propertyData).forEach(([key, value]) => {
       if (key !== 'images' && key !== 'videos') {
         if (Array.isArray(value)) {
           formData.append(key, JSON.stringify(value))
@@ -180,51 +264,66 @@ export const propertiesApi = {
     })
 
     // Add files
-    if (data.images) {
-      data.images.forEach((file) => {
+    if (propertyData.images) {
+      propertyData.images.forEach((file) => {
         formData.append('images', file)
       })
     }
 
-    if (data.videos) {
-      data.videos.forEach((file) => {
+    if (propertyData.videos) {
+      propertyData.videos.forEach((file) => {
         formData.append('videos', file)
       })
     }
 
-    return api.put<PropertyType>(`/properties/${id}`, formData, {
+    const response = await fetch(`/api/properties/${propertyId}`, {
+      method: 'PUT',
       headers: {
-        // Let the browser set the Content-Type with boundary
-        'Content-Type': 'multipart/form-data',
+        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
       },
+      body: formData
     })
+    if (!response.ok) {
+      throw new Error('Failed to update property')
+    }
+    const data = await response.json()
+    return data.data
   },
 
-  delete: async (id: number) => {
-    return api.delete(`/properties/${id}`)
-  },
-
-  updateStatus: async (id: number, status: PropertyType['status'], reason?: string) => {
-    return api.put<PropertyType>(`/properties/${id}/status`, {
-      status,
-      reason,
+  // 删除房源
+  deleteProperty: async (propertyId: number): Promise<void> => {
+    const response = await fetch(`/api/properties/${propertyId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+      }
     })
+    if (!response.ok) {
+      throw new Error('Failed to delete property')
+    }
   },
 
-  uploadMedia: async (propertyId: number, files: File[]) => {
+  // 上传房源媒体文件
+  uploadMedia: async (propertyId: number, files: File[], descriptions?: string[]): Promise<any> => {
     const formData = new FormData()
-    files.forEach((file) => {
+    files.forEach((file, index) => {
       formData.append('files', file)
+      if (descriptions && descriptions[index]) {
+        formData.append('descriptions', descriptions[index])
+      }
     })
 
-    return api.post(`/properties/${propertyId}/images`, formData, {
+    const response = await fetch(`/api/properties/${propertyId}/media`, {
+      method: 'POST',
       headers: {
-        'Content-Type': 'multipart/form-data',
+        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
       },
+      body: formData
     })
-  },
-
-  deleteMedia: async (propertyId: number, imageId: number) => {
-    return api.delete(`/properties/${propertyId}/images/${imageId}`)
-  },
+    if (!response.ok) {
+      throw new Error('Failed to upload media')
+    }
+    const data = await response.json()
+    return data.data
+  }
 } 
