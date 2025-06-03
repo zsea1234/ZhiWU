@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from 'react';
-import { maintenanceService, MaintenanceRequest, MaintenanceRequestCreateInput } from '@/app/services/maintenance';
+import { maintenanceService, MaintenanceRequest, MaintenanceRequestCreateInput } from '@/app/services/tenant/maintenance';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';

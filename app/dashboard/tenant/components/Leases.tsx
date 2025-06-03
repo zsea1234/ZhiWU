@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Eye, FileText, Download } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { getLeases, LeaseSummary } from "../../../services/lease"
+import { getLeases, LeaseSummary } from "../../../services/tenant/lease"
 import { format } from "date-fns"
 import { zhCN } from "date-fns/locale"
 
@@ -21,7 +21,7 @@ export default function Leases() {
     const fetchLeases = async () => {
       try {
         const token = localStorage.getItem("auth_token")
-        if (!token) {
+        if (token === null) {
           router.push("/auth/login")
           return
         }
@@ -63,7 +63,7 @@ export default function Leases() {
         return 'destructive'
       case 'pending_tenant_signature':
       case 'pending_landlord_signature':
-        return 'warning'
+        return 'secondary'
       default:
         return 'secondary'
     }
@@ -122,11 +122,11 @@ export default function Leases() {
               <div className="flex space-x-2">
                 {lease.contract_document_url && (
                   <>
-                    <Button variant="outline" size="sm" onClick={() => window.open(lease.contract_document_url, '_blank')}>
+                    <Button variant="outline" size="sm" onClick={() => window.open(lease.contract_document_url || '', '_blank')}>
                       <Eye className="h-4 w-4 mr-2" />
                       查看合同
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => window.open(lease.contract_document_url, '_blank')}>
+                    <Button variant="outline" size="sm" onClick={() => window.open(lease.contract_document_url || '', '_blank')}>
                       <Download className="h-4 w-4 mr-2" />
                       下载合同
                     </Button>

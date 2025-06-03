@@ -14,9 +14,8 @@ const api = axios.create({
 // 请求拦截器添加token
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('auth_token');
-  if (token) {
-    // 使用类型断言
-    (config.headers as any).Authorization = `Bearer ${token}`;
+  if (token !== null) {  // 使用严格相等检查
+    config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });

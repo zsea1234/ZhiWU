@@ -34,7 +34,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { propertyService, PropertyDetail } from "@/app/services/property"
+import { propertyService, PropertyDetail } from "@/app/services/tenant/property"
 import { toast } from "sonner"
 
 export default function PropertyDetailPage() {

@@ -9,8 +9,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2 } from "lucide-react"
 import { useAuth } from "@/app/contexts/AuthContext"
-import api from "@/app/services/api"
-import { User } from "@/app/services/userService"
+import api from "@/app/services/tenant/api"
+import { User } from "@/app/services/tenant/userService"
 
 interface RegisterResponse {
   access_token: string;

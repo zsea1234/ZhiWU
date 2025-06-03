@@ -11,7 +11,7 @@ import { Slider } from "@/components/ui/slider"
 import { Search, MapPin, Home, Bed, Bath, Square, Heart, Filter, Loader2, Users, ArrowRight } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
-import { PropertySummary, PropertySearchParams, PaginatedPropertyResponse, propertyService } from "../services/property"
+import { PropertySummary, PropertySearchParams, PaginatedPropertyResponse, propertyService } from "../services/tenant/property"
 
 export default function PropertiesPage() {
   const [searchQuery, setSearchQuery] = useState("")
