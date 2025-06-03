@@ -7,12 +7,12 @@ import { Badge } from "@/components/ui/badge"
 import { Eye, FileText, Download } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { getLeases, LeaseSummary } from "../../../services/tenant/lease"
+import { leaseService, Lease } from "../../../services/tenant/lease"
 import { format } from "date-fns"
 import { zhCN } from "date-fns/locale"
 
 export default function Leases() {
-  const [leases, setLeases] = useState<LeaseSummary[]>([])
+  const [leases, setLeases] = useState<Lease[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
@@ -26,8 +26,8 @@ export default function Leases() {
           return
         }
 
-        const response = await getLeases()
-        setLeases(response.data)
+        const response = await leaseService.getLeases()
+        setLeases(response)
         setError(null)
       } catch (err) {
         setError('获取租约列表失败')
@@ -96,7 +96,7 @@ export default function Leases() {
           <CardHeader>
             <div className="flex justify-between items-start">
               <div>
-                <CardTitle>{lease.property_summary.title}</CardTitle>
+                <CardTitle>{lease.property.title}</CardTitle>
                 <CardDescription>
                   租期：{format(new Date(lease.start_date), 'yyyy年MM月dd日', { locale: zhCN })} 至{' '}
                   {format(new Date(lease.end_date), 'yyyy年MM月dd日', { locale: zhCN })}
@@ -112,21 +112,21 @@ export default function Leases() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm font-medium text-gray-600">月租金</p>
-                  <p className="text-lg font-semibold">¥{lease.monthly_rent_amount}</p>
+                  <p className="text-lg font-semibold">¥{lease.monthly_rent}</p>
                 </div>
                 <div>
                   <p className="text-sm font-medium text-gray-600">房东</p>
-                  <p className="text-lg font-semibold">{lease.landlord_info.username}</p>
+                  <p className="text-lg font-semibold">{lease.property.address_summary}</p>
                 </div>
               </div>
               <div className="flex space-x-2">
-                {lease.contract_document_url && (
+                {lease.property.id && (
                   <>
-                    <Button variant="outline" size="sm" onClick={() => window.open(lease.contract_document_url || '', '_blank')}>
+                    <Button variant="outline" size="sm" onClick={() => window.open(`/leases/${lease.id}/documents`, '_blank')}>
                       <Eye className="h-4 w-4 mr-2" />
                       查看合同
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => window.open(lease.contract_document_url || '', '_blank')}>
+                    <Button variant="outline" size="sm" onClick={() => window.open(`/leases/${lease.id}/documents/download`, '_blank')}>
                       <Download className="h-4 w-4 mr-2" />
                       下载合同
                     </Button>

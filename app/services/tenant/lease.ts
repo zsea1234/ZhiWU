@@ -1,71 +1,56 @@
-export interface LeaseSummary {
+// app/services/tenant/lease.ts
+import api, { tenantAuth } from './api';
+
+export interface Lease {
+  id: number;
+  property_id: number;
+  tenant_id: number;
+  start_date: string;
+  end_date: string;
+  monthly_rent: number;
+  deposit_amount: number;
+  status: 'draft' | 'pending_tenant_signature' | 'pending_landlord_signature' | 'active' | 'expired' | 'terminated_early' | 'payment_due'
+  created_at: string;
+  updated_at: string;
+  property: {
     id: number;
-    property_id: number;
-    tenant_id: number;
-    start_date: string;
-    end_date: string;
-    monthly_rent_amount: number;
-    deposit_amount: number;
-    payment_due_day_of_month: number;
-    status: string;
-    tenant_info: {
-      id: number;
-      username: string;
-      role: string;
-    };
-    landlord_info: {
-      id: number;
-      username: string;
-      role: string;
-    };
-    property_summary: {
-      id: number;
-      title: string;
-      address_summary: string;
-      property_type: string;
-      area_sqm: number;
-      rent_price_monthly: number;
-      bedrooms: number;
-      living_rooms: number;
-      main_image_url: string | null;
-      status: string;
-    };
-    tenant_signed_at: string | null;
-    landlord_signed_at: string | null;
-    contract_document_url: string | null;
-    created_at: string;
-    updated_at: string;
-  }
-  
-  export interface PaginatedLeaseResponse {
-    data: LeaseSummary[];
-    links: {
-      first: string;
-      last: string;
-      prev: string | null;
-      next: string | null;
-    };
-    meta: {
-      current_page: number;
-      from: number | null;
-      last_page: number;
-      path: string;
-      per_page: number;
-      to: number | null;
-      total: number;
-    };
-  }
-  
-  export async function getLeases(page: number = 1, pageSize: number = 10): Promise<PaginatedLeaseResponse> {
-    const response = await fetch(`/api/v1/leases?page=${page}&page_size=${pageSize}`, {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`,
-      },
+    title: string;
+    address_summary: string;
+  };
+}
+
+export interface LeaseDocument {
+  id: number;
+  lease_id: number;
+  document_type: 'contract' | 'inventory' | 'other';
+  file_url: string;
+  created_at: string;
+}
+
+export const leaseService = {
+  getLeases: async (): Promise<Lease[]> => {
+    await tenantAuth.checkAuth();
+    const response = await api.get<Lease[]>('/leases');
+    return response.data;
+  },
+
+  getLeaseById: async (id: number): Promise<Lease> => {
+    await tenantAuth.checkAuth();
+    const response = await api.get<Lease>(`/leases/${id}`);
+    return response.data;
+  },
+
+  getLeaseDocuments: async (leaseId: number): Promise<LeaseDocument[]> => {
+    await tenantAuth.checkAuth();
+    const response = await api.get<LeaseDocument[]>(`/leases/${leaseId}/documents`);
+    return response.data;
+  },
+
+  downloadLeaseDocument: async (leaseId: number, documentId: number): Promise<Blob> => {
+    await tenantAuth.checkAuth();
+    const response = await api.get<Blob>(`/leases/${leaseId}/documents/${documentId}/download`, {
+      responseType: 'blob'
     });
-  
-    if (!response.ok) {
-      throw new Error('获取租约列表失败');
-    }
-  
-    return response.json();
+    return response.data as Blob;
   }
+};
