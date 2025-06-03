@@ -20,20 +20,104 @@ export default function NewPropertyPage() {
 
   const [formData, setFormData] = useState({
     title: "",
-    address: "",
-    area_code: "",
-    rent: "",
-    deposit: "",
+    address_line1: "",
+    city: "",
+    district: "",
+    postal_code: "",
+    country_code: "CN",
+    property_type: "APARTMENT",
+    area_sqm: "",
+    rent_price_monthly: "",
+    deposit_amount: "",
     bedrooms: "",
     living_rooms: "",
     bathrooms: "",
-    area: "",
-    floor: "",
+    floor_level: "",
     total_floors: "",
-    description: "",
-    facilities: [] as string[],
-    images: [] as File[],
+    description_text: "",
+    amenities: [] as string[],
+    rules: [] as string[],
+    available_date: new Date().toISOString().split('T')[0],
   })
+
+  // 添加图片上传状态
+  const [images, setImages] = useState<File[]>([])
+  const [previewUrls, setPreviewUrls] = useState<string[]>([])
+  const [isUploading, setIsUploading] = useState(false)
+  const [propertyId, setPropertyId] = useState<number | null>(null)
+
+  // 处理图片上传
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    if (files.length + images.length > 9) {
+      setError("最多只能上传9张图片")
+      return
+    }
+
+    // 验证文件类型和大小
+    const validFiles = files.filter(file => {
+      if (!file.type.startsWith('image/')) {
+        setError("只能上传图片文件")
+        return false
+      }
+      if (file.size > 5 * 1024 * 1024) { // 5MB
+        setError("图片大小不能超过5MB")
+        return false
+      }
+      return true
+    })
+
+    // 更新图片状态
+    setImages(prev => [...prev, ...validFiles])
+
+    // 生成预览URL
+    validFiles.forEach(file => {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setPreviewUrls(prev => [...prev, reader.result as string])
+      }
+      reader.readAsDataURL(file)
+    })
+  }
+
+  // 删除图片
+  const handleRemoveImage = (index: number) => {
+    setImages(prev => prev.filter((_, i) => i !== index))
+    setPreviewUrls(prev => prev.filter((_, i) => i !== index))
+  }
+
+  // 上传图片到服务器
+  const uploadImages = async (propertyId: number) => {
+    if (images.length === 0) return
+
+    setIsUploading(true)
+    try {
+      const formData = new FormData()
+      images.forEach(file => {
+        formData.append('files', file)
+      })
+
+      const response = await fetch(`http://localhost:5001/api/v1/properties/${propertyId}/media`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+        },
+        body: formData
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to upload images')
+      }
+
+      const data = await response.json()
+      console.log('Images uploaded successfully:', data)
+    } catch (err) {
+      console.error('Failed to upload images:', err)
+      setError("图片上传失败，请稍后重试")
+    } finally {
+      setIsUploading(false)
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -42,15 +126,86 @@ export default function NewPropertyPage() {
     setSuccess("")
 
     try {
-      // 模拟API调用
-      await new Promise((resolve) => setTimeout(resolve, 1500))
-      
+      // 表单验证
+      if (!formData.city || !formData.district) {
+        setError("城市和区域不能为空")
+        setIsLoading(false)
+        return
+      }
+
+      // 验证面积
+      const areaSqm = parseFloat(formData.area_sqm)
+      if (isNaN(areaSqm) || areaSqm < 1) {
+        setError("面积必须大于等于1平方米")
+        setIsLoading(false)
+        return
+      }
+
+      // 验证租金
+      const rentPrice = parseFloat(formData.rent_price_monthly)
+      if (isNaN(rentPrice) || rentPrice < 0) {
+        setError("月租金不能为负数")
+        setIsLoading(false)
+        return
+      }
+
+      // 验证押金
+      const depositAmount = parseFloat(formData.deposit_amount)
+      if (isNaN(depositAmount) || depositAmount < 0) {
+        setError("押金不能为负数")
+        setIsLoading(false)
+        return
+      }
+
+      // 准备提交数据
+      const propertyData = {
+        ...formData,
+        area_sqm: areaSqm,
+        rent_price_monthly: rentPrice,
+        deposit_amount: depositAmount,
+        bedrooms: parseInt(formData.bedrooms) || 0,
+        living_rooms: parseInt(formData.living_rooms) || 0,
+        bathrooms: parseInt(formData.bathrooms) || 0,
+        floor_level: formData.floor_level ? parseInt(formData.floor_level) : undefined,
+        total_floors: formData.total_floors ? parseInt(formData.total_floors) : undefined,
+        postal_code: formData.postal_code || "000000",
+        country_code: formData.country_code || "CN",
+        property_type: formData.property_type || "APARTMENT",
+        amenities: formData.amenities || [],
+        rules: formData.rules || [],
+        available_date: formData.available_date || new Date().toISOString().split('T')[0]
+      }
+
+      // 创建房源
+      const response = await fetch('http://localhost:5001/api/v1/properties', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+        },
+        body: JSON.stringify(propertyData)
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.message || 'Failed to create property')
+      }
+
+      const data = await response.json()
+      const newPropertyId = data.data.id
+
+      // 上传图片
+      if (images.length > 0) {
+        await uploadImages(newPropertyId)
+      }
+
       setSuccess("房源发布成功！")
       setTimeout(() => {
         router.push("/dashboard/landlord")
       }, 1500)
     } catch (err) {
-      setError("发布失败，请稍后重试")
+      console.error('Error creating property:', err)
+      setError(err instanceof Error ? err.message : "发布失败，请稍后重试")
     } finally {
       setIsLoading(false)
     }
@@ -62,14 +217,8 @@ export default function NewPropertyPage() {
   }
 
   const handleSelectChange = (name: string, value: string) => {
+    console.log(`Selected ${name}:`, value)
     setFormData((prev) => ({ ...prev, [name]: value }))
-  }
-
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const files = Array.from(e.target.files)
-      setFormData((prev) => ({ ...prev, images: [...prev.images, ...files] }))
-    }
   }
 
   return (
@@ -120,15 +269,15 @@ export default function NewPropertyPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="address">详细地址</Label>
+                    <Label htmlFor="address_line1">详细地址</Label>
                     <div className="relative">
                       <MapPin className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
                       <Input
-                        id="address"
-                        name="address"
+                        id="address_line1"
+                        name="address_line1"
                         placeholder="例如：朝阳区幸福小区1号楼2单元303"
                         className="pl-10"
-                        value={formData.address}
+                        value={formData.address_line1}
                         onChange={handleInputChange}
                         required
                       />
@@ -137,60 +286,88 @@ export default function NewPropertyPage() {
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="area_code">所在区域</Label>
+                      <Label htmlFor="city">所在城市</Label>
+                      <Input
+                        id="city"
+                        name="city"
+                        placeholder="例如：北京"
+                        value={formData.city}
+                        onChange={handleInputChange}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="district">所在区域</Label>
+                      <Input
+                        id="district"
+                        name="district"
+                        placeholder="例如：朝阳区"
+                        value={formData.district}
+                        onChange={handleInputChange}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="rent_price_monthly">月租金（元）</Label>
+                      <Input
+                        id="rent_price_monthly"
+                        name="rent_price_monthly"
+                        type="number"
+                        placeholder="例如：5000"
+                        value={formData.rent_price_monthly}
+                        onChange={handleInputChange}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="deposit_amount">押金（元）</Label>
+                      <Input
+                        id="deposit_amount"
+                        name="deposit_amount"
+                        type="number"
+                        placeholder="例如：5000"
+                        value={formData.deposit_amount}
+                        onChange={handleInputChange}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="area_sqm">面积（平方米）</Label>
+                      <Input
+                        id="area_sqm"
+                        name="area_sqm"
+                        type="number"
+                        min="1"
+                        step="0.01"
+                        placeholder="例如：85.5"
+                        value={formData.area_sqm}
+                        onChange={handleInputChange}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="property_type">房屋类型</Label>
                       <Select
-                        value={formData.area_code}
-                        onValueChange={(value) => handleSelectChange("area_code", value)}
+                        value={formData.property_type}
+                        onValueChange={(value) => handleSelectChange("property_type", value)}
                       >
                         <SelectTrigger>
-                          <SelectValue placeholder="选择区域" />
+                          <SelectValue placeholder="选择房屋类型" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="chaoyang">朝阳区</SelectItem>
-                          <SelectItem value="haidian">海淀区</SelectItem>
-                          <SelectItem value="xicheng">西城区</SelectItem>
-                          <SelectItem value="dongcheng">东城区</SelectItem>
+                          <SelectItem value="APARTMENT">公寓</SelectItem>
+                          <SelectItem value="HOUSE">别墅/独立屋</SelectItem>
+                          <SelectItem value="STUDIO">开间</SelectItem>
+                          <SelectItem value="SHARED_ROOM">合租单间</SelectItem>
+                          <SelectItem value="OTHER">其他</SelectItem>
                         </SelectContent>
                       </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="rent">月租金（元）</Label>
-                      <Input
-                        id="rent"
-                        name="rent"
-                        type="number"
-                        placeholder="例如：5000"
-                        value={formData.rent}
-                        onChange={handleInputChange}
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="deposit">押金（元）</Label>
-                      <Input
-                        id="deposit"
-                        name="deposit"
-                        type="number"
-                        placeholder="例如：5000"
-                        value={formData.deposit}
-                        onChange={handleInputChange}
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="area">房屋面积（㎡）</Label>
-                      <Input
-                        id="area"
-                        name="area"
-                        type="number"
-                        placeholder="例如：85"
-                        value={formData.area}
-                        onChange={handleInputChange}
-                        required
-                      />
                     </div>
                   </div>
                 </CardContent>
@@ -258,13 +435,13 @@ export default function NewPropertyPage() {
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="floor">所在楼层</Label>
+                      <Label htmlFor="floor_level">所在楼层</Label>
                       <Input
-                        id="floor"
-                        name="floor"
+                        id="floor_level"
+                        name="floor_level"
                         type="number"
                         placeholder="例如：3"
-                        value={formData.floor}
+                        value={formData.floor_level}
                         onChange={handleInputChange}
                         required
                       />
@@ -293,13 +470,13 @@ export default function NewPropertyPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
-                    <Label htmlFor="description">详细描述</Label>
+                    <Label htmlFor="description_text">详细描述</Label>
                     <Textarea
-                      id="description"
-                      name="description"
+                      id="description_text"
+                      name="description_text"
                       placeholder="请详细描述房源的位置、装修、周边配套等信息..."
                       className="min-h-[200px]"
-                      value={formData.description}
+                      value={formData.description_text}
                       onChange={handleInputChange}
                       required
                     />
@@ -317,6 +494,31 @@ export default function NewPropertyPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
+                    {/* 图片预览区域 */}
+                    {previewUrls.length > 0 && (
+                      <div className="grid grid-cols-3 gap-4 mb-4">
+                        {previewUrls.map((url, index) => (
+                          <div key={index} className="relative group">
+                            <img
+                              src={url}
+                              alt={`预览图片 ${index + 1}`}
+                              className="w-full h-32 object-cover rounded-lg"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveImage(index)}
+                              className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                              </svg>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* 上传区域 */}
                     <div className="border-2 border-dashed border-gray-200 rounded-lg p-6 text-center">
                       <Upload className="h-8 w-8 text-gray-400 mx-auto mb-2" />
                       <p className="text-sm text-gray-600 mb-2">点击或拖拽图片到此处上传</p>
@@ -332,23 +534,16 @@ export default function NewPropertyPage() {
                         type="button"
                         variant="outline"
                         onClick={() => document.getElementById("image-upload")?.click()}
+                        disabled={images.length >= 9}
                       >
                         选择图片
                       </Button>
+                      {images.length > 0 && (
+                        <p className="text-sm text-gray-500 mt-2">
+                          已选择 {images.length} 张图片
+                        </p>
+                      )}
                     </div>
-                    {formData.images.length > 0 && (
-                      <div className="grid grid-cols-3 gap-2">
-                        {formData.images.map((file, index) => (
-                          <div key={index} className="relative aspect-square">
-                            <img
-                              src={URL.createObjectURL(file)}
-                              alt={`预览图 ${index + 1}`}
-                              className="w-full h-full object-cover rounded-lg"
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 </CardContent>
               </Card>
