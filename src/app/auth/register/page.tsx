@@ -8,21 +8,11 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2 } from "lucide-react"
-import { useAuth } from "@/app/contexts/AuthContext"
-import api from "@/app/services/tenant/api"
-import { User } from "@/app/services/tenant/userService"
+import userService, { RegisterRequest, User } from "@/lib/api/services/userService"
+import { getFriendlyErrorMessage } from "@/lib/api/client/errorHandler"
 
-interface RegisterResponse {
-  access_token: string;
-  user: User;
-}
-
-interface RegisterInput {
-  username: string;
-  password: string;
-  email: string;
-  phone: string;
-  role: 'tenant' | 'landlord';
+interface RegisterInput extends RegisterRequest {
+  confirmPassword?: string;
 }
 
 export default function RegisterPage() {
@@ -34,9 +24,9 @@ export default function RegisterPage() {
     password: "",
     phone: "",
     role: "tenant",
+    confirmPassword: "",
   })
   const router = useRouter()
-  const { login } = useAuth()
 
   // 添加验证函数
   const validateForm = () => {
@@ -63,7 +53,7 @@ export default function RegisterPage() {
 
     // 手机号验证：符合E.164标准
     const phoneRegex = /^\+?[1-9]\d{1,14}$/
-    if (!phoneRegex.test(formData.phone)) {
+    if (formData.phone && !phoneRegex.test(formData.phone)) {
       setError("请输入有效的手机号码")
       return false
     }
@@ -82,94 +72,23 @@ export default function RegisterPage() {
     setIsLoading(true)
     setError("")
 
-<<<<<<< HEAD
-    try {
-      const response = await api.post<RegisterResponse>('/auth/register', formData)
-      const { access_token, user } = response.data
-
-      await login(access_token)
-
-      // 根据用户角色跳转到不同的页面
-      switch (user.role) {
-=======
     // 表单验证
     if (!validateForm()) {
       setIsLoading(false)
       return
     }
 
-
     try {
-      const response = await fetch("http://localhost:5001/api/v1/auth/register", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          username: formData.username,
-          email: formData.email,
-          password: formData.password,
-          role: formData.role,
-          phone: formData.phone,
-        }),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        // 处理服务器返回的验证错误
-        if (data.error_code === "VALIDATION_ERROR" && data.errors) {
-          const errorMessages = Object.values(data.errors).flat()
-          throw new Error(typeof errorMessages[0] === 'string' ? errorMessages[0] : "数据验证失败")
-        } else if (response.status === 400) {
-          throw new Error(data.message || "请求参数错误")
-        } else if (response.status === 409) {
-          throw new Error(data.message || "用户名或邮箱已被注册")
-        } else {
-          throw new Error(data.message || "注册失败，请稍后重试")
-        }
-      }
-
-      // 检查是否需要设置MFA
-      if (data.mfa_required) {
-        localStorage.setItem("temp_auth_token", data.access_token)
-        localStorage.setItem("temp_user_info", JSON.stringify(data.user))
-        router.push("/auth/mfa-setup")
-        return
-      }
-
-      // 存储认证数据
-      localStorage.setItem("auth_token", data.access_token)
-      localStorage.setItem("user_role", formData.role)
-      localStorage.setItem("user_info", JSON.stringify({
-        username: formData.username,
-        email: formData.email,
-        role: formData.role,
-        phone: formData.phone
-      }))
-
+      // 使用userService进行注册
+      const { confirmPassword, ...registerData } = formData;
+      const authData = await userService.register(registerData);
+      
       // 根据用户角色重定向
-      switch (formData.role) {
->>>>>>> e04423dfd1b311b34c13caa3d5fd2b5fd4463339
-        case "admin":
-          router.push("/dashboard/admin")
-          break
-        case "landlord":
-          router.push("/dashboard/landlord")
-          break
-        case "tenant":
-          router.push("/dashboard/tenant")
-          break
-        default:
-          router.push("/dashboard")
-      }
-<<<<<<< HEAD
-    } catch (err: any) {
-      setError(err.response?.data?.message || "注册失败，请稍后重试")
-=======
+      const role = authData.user.role;
+      router.push(`/dashboard/${role}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "注册失败，请稍后重试")
->>>>>>> e04423dfd1b311b34c13caa3d5fd2b5fd4463339
+      // 使用统一的错误处理
+      setError(getFriendlyErrorMessage(err as any));
     } finally {
       setIsLoading(false)
     }
@@ -237,6 +156,18 @@ export default function RegisterPage() {
                 type="password"
                 placeholder="请输入密码"
                 value={formData.password}
+                onChange={handleInputChange}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="confirmPassword">确认密码</Label>
+              <Input
+                id="confirmPassword"
+                name="confirmPassword"
+                type="password"
+                placeholder="请再次输入密码"
+                value={formData.confirmPassword}
                 onChange={handleInputChange}
                 required
               />

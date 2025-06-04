@@ -2,13 +2,24 @@
 
 # dependencies
 /node_modules
+/.pnp
+.pnp.js
+.yarn/install-state.gz
 
 # next.js
 /.next/
 /out/
+/.swc/
 
 # production
 /build
+/dist
+
+# misc
+.DS_Store
+*.pem
+Thumbs.db
+desktop.ini
 
 # debug
 npm-debug.log*
@@ -16,8 +27,12 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files
-.env*
+# local env files
+.env*.local
+.env
+.env.development
+.env.test
+.env.production
 
 # vercel
 .vercel
@@ -25,3 +40,44 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# IDE/Editor specific
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+*.sublime-project
+*.sublime-workspace
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# testing
+/coverage
+/.nyc_output
+
+# logs
+logs
+*.log
+
+# cache
+.npm
+.eslintcache
+.stylelintcache
+.prettiercache
+
+# turbo
+.turbo
+
+# storybook
+storybook-static/
+
+# PWA / Service Worker
+public/sw.js
+public/sw.js.map
+public/workbox-*.js
+public/workbox-*.js.map

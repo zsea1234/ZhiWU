@@ -1,0 +1,69 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# 智屋 - 智能房屋租赁平台
+
+智屋是一个基于Next.js和Flask的智能房屋租赁平台，提供房源发布、预约看房、在线签约、租金支付和维修投诉等功能。
+
+## 项目结构
+
+项目采用了企业级前端架构，主要目录结构如下：
+
+```
+src/
+├── app/                    # Next.js App Router目录
+│   ├── auth/               # 认证相关页面
+│   ├── dashboard/          # 用户仪表板
+│   ├── properties/         # 房源相关页面
+│   └── about/              # 关于页面
+├── components/             # 共享UI组件
+│   └── ui/                 # 基础UI组件（基于shadcn/ui）
+├── lib/                    # 通用库
+│   ├── api/                # API服务层
+│   │   ├── client/         # API客户端基础设施
+│   │   │   ├── apiClient.ts    # API客户端工厂
+│   │   │   ├── errorHandler.ts # 错误处理
+│   │   │   ├── interceptors.ts # 请求/响应拦截器
+│   │   │   └── types.ts        # API类型定义
+│   │   └── services/       # 领域模型API服务
+│   ├── contexts/           # React上下文
+│   ├── hooks/              # 自定义钩子
+│   ├── utils/              # 工具函数
+│   └── constants/          # 常量定义
+├── styles/                 # 全局样式
+└── types/                  # 全局类型定义
+```
+
+## 技术栈
+
+1. **前端框架**
+   - Next.js 15.x（使用App Router）
+   - React 18.x
+   - TypeScript
+
+2. **UI/样式**
+   - Tailwind CSS
+   - shadcn/ui组件库
+   - Radix UI原语组件
+   - Lucide图标
+
+3. **状态管理与数据获取**
+   - React Context API
+   - Tanstack React Query
+   - Axios
+
+4. **表单处理**
+   - React Hook Form
+   - Zod（表单验证）
+
+5. **认证**
+   - JWT令牌认证
+   - 本地存储（localStorage）管理用户会话
+
+## 功能架构
+
+1. **响应式设计**
+
+   - 适配移动端和桌面端
