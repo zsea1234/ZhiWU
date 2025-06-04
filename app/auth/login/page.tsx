@@ -60,9 +60,23 @@ export default function LoginPage() {
           console.log("Set auth_token:", data.data.access_token)
         }
         // 存储用户角色
-        localStorage.setItem('user_role', 'landlord')
-        console.log("Set user_role:", 'landlord')
-        router.push('/dashboard/landlord')
+        localStorage.setItem('user_role', formData.role)
+        console.log("Set user_role:", formData.role)
+        
+        // 根据用户角色重定向到相应的仪表板
+        switch (formData.role) {
+          case 'tenant':
+            router.push('/dashboard/tenant')
+            break
+          case 'landlord':
+            router.push('/dashboard/landlord')
+            break
+          case 'admin':
+            router.push('/dashboard/admin')
+            break
+          default:
+            router.push('/dashboard')
+        }
       } else {
         setError(data.message || '登录失败')
       }
