@@ -1,75 +1,350 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Home,
   MessageSquare,
   FileText,
-  CreditCard,
-  Settings,
+  Calendar,
+  Wrench,
   AlertCircle,
+  Send,
+  X,
+  Download,
+  Loader2,
+  Plus,
+  Bell,
+  CheckCircle,
+  Clock,
+  Settings, // 添加这一行
 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { useToast } from "@/components/ui/use-toast"
 
-// 导入各个组件
-import Overview from "./components/Overview"
-import Properties from "./components/Properties"
-import Bookings from "./components/Bookings"
-import Leases from "./components/Leases"
-import Payments from "./components/Payments"
-import Maintenance from "./components/Maintenance"
-import Messages from "./components/Messages"
+// 接口定义
+interface Message {
+  id: number
+  sender: string
+  content: string
+  time: string
+  unread?: boolean
+  isLandlord?: boolean
+}
 
-// Mock user data
-const mockUser = {
-  id: 1,
-  username: "张三",
-  role: "tenant",
-  email: "zhangsan@example.com",
+interface Booking {
+  booking_id: number
+  property_id: number
+  tenant_id: number
+  landlord_id: number
+  requested_datetime: string
+  notes_for_landlord: string | null
+  landlord_notes: string | null
+  status: 'PENDING_CONFIRMATION' | 'CONFIRMED_BY_LANDLORD' | 'CANCELLED_BY_TENANT' | 'CANCELLED_BY_LANDLORD' | 'COMPLETED' | 'EXPIRED'
+  created_at: string
+  updated_at: string
+  property?: {
+    id: number
+    title: string
+    address_line1: string
+    city: string
+  }
+}
+
+interface LeaseInfo {
+  id: number
+  property_id: number
+  tenant_id: number
+  landlord_id: number
+  start_date: string
+  end_date: string
+  monthly_rent_amount: string
+  deposit_amount: string
+  status: 'draft' | 'pending_tenant_signature' | 'pending_landlord_signature' | 'active' | 'expired' | 'terminated_early' | 'payment_due'
+  landlord_signed_at: string | null
+  tenant_signed_at: string | null
+  created_at: string
+  updated_at: string
+  additional_terms: string | null
+  contract_document_url: string | null
+  payment_due_day_of_month: number
+  termination_date: string | null
+  termination_reason: string | null
+  landlord_info: {
+    id: number
+    username: string
+    email: string
+    phone: string
+  }
+  property_summary: {
+    id: number
+    title: string
+    address_line1: string
+    city: string
+    district: string
+    property_type: string
+    area_sqm: number
+    bedrooms: number
+    bathrooms: number
+  }
+}
+
+interface MaintenanceRequest {
+  id: number
+  property_id: number
+  tenant_id: number
+  description: string
+  status: 'PENDING_ASSIGNMENT' | 'ASSIGNED_TO_WORKER' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED_BY_TENANT' | 'CLOSED_BY_LANDLORD'
+  created_at: string
+  updated_at: string
+  completed_at: string | null
+  assigned_worker_name: string | null
+  worker_contact_info: string | null
+  resolution_notes: string | null
+}
+
+interface ContractPreview {
+  isOpen: boolean
+  contractUrl: string
+  landlord: string
+  property: string
+  contractData?: ContractData
+}
+
+interface ContractData {
+  contractNumber: string
+  startDate: string
+  endDate: string
+  monthlyRent: string
+  deposit: string
+  paymentMethod: string
+  terms: string[]
+  signatures: {
+    landlord: string
+    tenant: string
+    date: string
+  }
 }
 
 export default function TenantDashboard() {
-  const [user, setUser] = useState(mockUser)
-  const [activeTab, setActiveTab] = useState("overview")
   const router = useRouter()
+  const { toast } = useToast()
+  const [user, setUser] = useState<any>(null)
+  const [selectedChat, setSelectedChat] = useState<Message | null>(null)
+  const [messageInput, setMessageInput] = useState("")
+  const [bookings, setBookings] = useState<Booking[]>([])
+  const [leases, setLeases] = useState<LeaseInfo[]>([])
+  const [maintenanceRequests, setMaintenanceRequests] = useState<MaintenanceRequest[]>([])
+  const [contractPreview, setContractPreview] = useState<ContractPreview>({
+    isOpen: false,
+    contractUrl: "",
+    landlord: "",
+    property: ""
+  })
+  const [loading, setLoading] = useState(true)
+  const [isLoadingBookings, setIsLoadingBookings] = useState(true)
+  const [isLoadingLeases, setIsLoadingLeases] = useState(true)
+  const [isLoadingMaintenance, setIsLoadingMaintenance] = useState(true)
+  const [selectedLease, setSelectedLease] = useState<LeaseInfo | null>(null)
+  const [newMaintenanceRequest, setNewMaintenanceRequest] = useState({
+    property_id: 0,
+    description: '',
+    preferred_contact_time: ''
+  })
+
+  // 统计数据
+  const stats = {
+    totalBookings: bookings.length,
+    activeLeases: leases.filter(l => l.status === 'active').length,
+    pendingMaintenance: maintenanceRequests.filter(m => m.status === 'PENDING_ASSIGNMENT').length,
+    unreadMessages: 0 // 需要实现消息统计
+  }
 
   useEffect(() => {
-    // Check authentication
-    const token = localStorage.getItem("auth_token")
-    if (!token) {
-      router.push("/auth/login")
-      return
+    // 从localStorage获取用户信息
+    const userInfo = localStorage.getItem('user_info')
+    if (userInfo) {
+      try {
+        const parsedUser = JSON.parse(userInfo)
+        setUser(parsedUser)
+        fetchBookings()
+        fetchLeases()
+        fetchMaintenanceRequests()
+      } catch (error) {
+        console.error('Error parsing user info:', error)
+        router.push('/auth/login')
+      }
+    } else {
+      router.push('/auth/login')
     }
+  }, [])
 
-    // Get user role from localStorage or API
-    const role = localStorage.getItem("user_role") || "tenant"
-    setUser((prev) => ({ ...prev, role }))
-  }, [router])
-
-  const renderContent = () => {
-    switch (activeTab) {
-      case "overview":
-        return <Overview />
-      case "properties":
-        return <Properties />
-      case "bookings":
-        return <Bookings />
-      case "leases":
-        return <Leases />
-      case "payments":
-        return <Payments />
-      case "maintenance":
-        return <Maintenance />
-      case "messages":
-        return <Messages />
-      default:
-        return <Overview />
+  const fetchBookings = async () => {
+    try {
+      setIsLoadingBookings(true)
+      const response = await fetch('/api/v1/bookings')
+      const data = await response.json()
+      setBookings(data.data)
+    } catch (error) {
+      console.error('Error fetching bookings:', error)
+      toast({
+        title: "错误",
+        description: "获取预约列表失败",
+        variant: "destructive"
+      })
+    } finally {
+      setIsLoadingBookings(false)
     }
+  }
+
+  const fetchLeases = async () => {
+    try {
+      setIsLoadingLeases(true)
+      const response = await fetch('/api/v1/leases')
+      const data = await response.json()
+      setLeases(data.data)
+    } catch (error) {
+      console.error('Error fetching leases:', error)
+      toast({
+        title: "错误",
+        description: "获取租赁合同列表失败",
+        variant: "destructive"
+      })
+    } finally {
+      setIsLoadingLeases(false)
+    }
+  }
+
+  const fetchMaintenanceRequests = async () => {
+    try {
+      setIsLoadingMaintenance(true)
+      const response = await fetch('/api/v1/maintenance-requests')
+      const data = await response.json()
+      setMaintenanceRequests(data.data)
+    } catch (error) {
+      console.error('Error fetching maintenance requests:', error)
+      toast({
+        title: "错误",
+        description: "获取维修申请列表失败",
+        variant: "destructive"
+      })
+    } finally {
+      setIsLoadingMaintenance(false)
+    }
+  }
+
+  const handleCancelBooking = async (bookingId: number) => {
+    try {
+      await fetch(`/api/v1/bookings/${bookingId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          status: 'CANCELLED_BY_TENANT'
+        })
+      })
+      toast({
+        title: "成功",
+        description: "预约已取消"
+      })
+      fetchBookings()
+    } catch (error) {
+      console.error('Error cancelling booking:', error)
+      toast({
+        title: "错误",
+        description: "取消预约失败",
+        variant: "destructive"
+      })
+    }
+  }
+
+  const handleViewContract = (lease: LeaseInfo) => {
+    setSelectedLease(lease)
+    setContractPreview({
+      isOpen: true,
+      contractUrl: lease.contract_document_url || '',
+      landlord: lease.landlord_info.username,
+      property: lease.property_summary.title
+    })
+  }
+
+  const handleClosePreview = () => {
+    setContractPreview({
+      isOpen: false,
+      contractUrl: "",
+      landlord: "",
+      property: ""
+    })
+  }
+
+  const handleDownloadContract = (url: string) => {
+    window.open(url, '_blank')
+  }
+
+  const handleSignLease = async (leaseId: number) => {
+    try {
+      await fetch(`/api/v1/leases/${leaseId}/sign`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          signature_data: 'UserConfirmedAgreement_Timestamp'
+        })
+      })
+      toast({
+        title: "成功",
+        description: "合同已签署"
+      })
+      fetchLeases()
+    } catch (error) {
+      console.error('Error signing lease:', error)
+      toast({
+        title: "错误",
+        description: "签署合同失败",
+        variant: "destructive"
+      })
+    }
+  }
+
+  const handleSubmitMaintenanceRequest = async () => {
+    try {
+      await fetch('/api/v1/maintenance-requests', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(newMaintenanceRequest)
+      })
+      toast({
+        title: "成功",
+        description: "维修申请已提交"
+      })
+      fetchMaintenanceRequests()
+    } catch (error) {
+      console.error('Error submitting maintenance request:', error)
+      toast({
+        title: "错误",
+        description: "提交维修申请失败",
+        variant: "destructive"
+      })
+    }
+  }
+
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    )
   }
 
   return (
@@ -82,7 +357,9 @@ export default function TenantDashboard() {
               <Home className="h-6 w-6 text-blue-600" />
               <span className="text-xl font-bold">智屋</span>
             </Link>
-            <Badge variant="secondary">租客</Badge>
+            <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+              租客
+            </Badge>
           </div>
           <div className="flex items-center space-x-4">
             <span className="text-sm text-gray-600">欢迎，{user.username}</span>
@@ -98,8 +375,8 @@ export default function TenantDashboard() {
 
       <div className="container mx-auto px-4 py-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">租客控制台</h1>
-          <p className="text-gray-600">管理您的租房信息和服务</p>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">租客中心</h1>
+          <p className="text-gray-600">管理您的租房事务</p>
         </div>
 
         {/* Quick Stats */}
@@ -108,10 +385,10 @@ export default function TenantDashboard() {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600">当前租约</p>
-                  <p className="text-2xl font-bold">1</p>
+                  <p className="text-sm font-medium text-gray-600">看房预约</p>
+                  <p className="text-2xl font-bold">{stats.totalBookings}</p>
                 </div>
-                <FileText className="h-8 w-8 text-blue-600" />
+                <Calendar className="h-8 w-8 text-blue-600" />
               </div>
             </CardContent>
           </Card>
@@ -119,10 +396,21 @@ export default function TenantDashboard() {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600">待支付租金</p>
-                  <p className="text-2xl font-bold text-red-600">¥5,000</p>
+                  <p className="text-sm font-medium text-gray-600">已签约</p>
+                  <p className="text-2xl font-bold text-green-600">{stats.activeLeases}</p>
                 </div>
-                <CreditCard className="h-8 w-8 text-red-600" />
+                <CheckCircle className="h-8 w-8 text-green-600" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-600">待处理维修</p>
+                  <p className="text-2xl font-bold text-orange-600">{stats.pendingMaintenance}</p>
+                </div>
+                <Wrench className="h-8 w-8 text-orange-600" />
               </div>
             </CardContent>
           </Card>
@@ -131,42 +419,323 @@ export default function TenantDashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">未读消息</p>
-                  <p className="text-2xl font-bold">3</p>
+                  <p className="text-2xl font-bold text-red-600">{stats.unreadMessages}</p>
                 </div>
-                <MessageSquare className="h-8 w-8 text-green-600" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">维修申请</p>
-                  <p className="text-2xl font-bold">1</p>
-                </div>
-                <AlertCircle className="h-8 w-8 text-orange-600" />
+                <Bell className="h-8 w-8 text-red-600" />
               </div>
             </CardContent>
           </Card>
         </div>
 
         {/* Main Content */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <Tabs defaultValue="properties" className="space-y-4">
           <TabsList>
-            <TabsTrigger value="overview">概览</TabsTrigger>
-            <TabsTrigger value="properties">房源搜索</TabsTrigger>
-            <TabsTrigger value="bookings">我的预约</TabsTrigger>
-            <TabsTrigger value="leases">租约管理</TabsTrigger>
-            <TabsTrigger value="payments">支付记录</TabsTrigger>
-            <TabsTrigger value="maintenance">维修申请</TabsTrigger>
-            <TabsTrigger value="messages">消息中心</TabsTrigger>
+            <TabsTrigger value="properties">
+              <Home className="w-4 h-4 mr-2" />
+              房源浏览
+            </TabsTrigger>
+            <TabsTrigger value="bookings">
+              <Calendar className="w-4 h-4 mr-2" />
+              看房预约
+            </TabsTrigger>
+            <TabsTrigger value="leases">
+              <FileText className="w-4 h-4 mr-2" />
+              租赁合同
+            </TabsTrigger>
+            <TabsTrigger value="maintenance">
+              <Wrench className="w-4 h-4 mr-2" />
+              维修申请
+            </TabsTrigger>
+            <TabsTrigger value="messages">
+              <MessageSquare className="w-4 h-4 mr-2" />
+              消息中心
+            </TabsTrigger>
           </TabsList>
 
-          <div className="mt-6">
-            {renderContent()}
-          </div>
+          <TabsContent value="properties" className="space-y-4">
+            {/* 房源浏览内容 */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {/* 这里添加房源列表 */}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="bookings" className="space-y-4">
+            {isLoadingBookings ? (
+              <div className="flex justify-center">
+                <Loader2 className="w-6 h-6 animate-spin" />
+              </div>
+            ) : (
+              <div className="grid gap-4">
+                {bookings.map((booking) => (
+                  <Card key={booking.booking_id}>
+                    <CardHeader>
+                      <CardTitle>{booking.property?.title}</CardTitle>
+                      <CardDescription>
+                        {booking.property?.address_line1}, {booking.property?.city}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <p>预约时间：{new Date(booking.requested_datetime).toLocaleString()}</p>
+                          <p>状态：{booking.status}</p>
+                        </div>
+                        {booking.status === 'PENDING_CONFIRMATION' && (
+                          <Button
+                            variant="destructive"
+                            onClick={() => handleCancelBooking(booking.booking_id)}
+                          >
+                            取消预约
+                          </Button>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="leases" className="space-y-4">
+            {isLoadingLeases ? (
+              <div className="flex justify-center">
+                <Loader2 className="w-6 h-6 animate-spin" />
+              </div>
+            ) : (
+              <div className="grid gap-4">
+                {leases.map((lease) => (
+                  <Card key={lease.id}>
+                    <CardHeader>
+                      <CardTitle>{lease.property_summary.title}</CardTitle>
+                      <CardDescription>
+                        {lease.property_summary.address_line1}, {lease.property_summary.city}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <p>租期：{lease.start_date} 至 {lease.end_date}</p>
+                          <p>月租金：¥{lease.monthly_rent_amount}</p>
+                          <p>状态：{lease.status}</p>
+                        </div>
+                        <div className="space-x-2">
+                          {lease.contract_document_url && (
+                            <Button
+                              variant="outline"
+                              onClick={() => handleViewContract(lease)}
+                            >
+                              查看合同
+                            </Button>
+                          )}
+                          {lease.status === 'pending_tenant_signature' && (
+                            <Button
+                              onClick={() => handleSignLease(lease.id)}
+                            >
+                              签署合同
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="maintenance" className="space-y-4">
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="w-4 h-4 mr-2" />
+                  提交维修申请
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>提交维修申请</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-sm font-medium">问题描述</label>
+                    <Textarea
+                      value={newMaintenanceRequest.description}
+                      onChange={(e) => setNewMaintenanceRequest({
+                        ...newMaintenanceRequest,
+                        description: e.target.value
+                      })}
+                      placeholder="请详细描述需要维修的问题..."
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">期望联系时间</label>
+                    <Input
+                      value={newMaintenanceRequest.preferred_contact_time}
+                      onChange={(e) => setNewMaintenanceRequest({
+                        ...newMaintenanceRequest,
+                        preferred_contact_time: e.target.value
+                      })}
+                      placeholder="例如：工作日下午"
+                    />
+                  </div>
+                  <Button onClick={handleSubmitMaintenanceRequest}>
+                    提交申请
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            {isLoadingMaintenance ? (
+              <div className="flex justify-center">
+                <Loader2 className="w-6 h-6 animate-spin" />
+              </div>
+            ) : (
+              <div className="grid gap-4">
+                {maintenanceRequests.map((request) => (
+                  <Card key={request.id}>
+                    <CardHeader>
+                      <CardTitle>维修申请 #{request.id}</CardTitle>
+                      <CardDescription>
+                        提交时间：{new Date(request.created_at).toLocaleString()}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2">
+                        <p>{request.description}</p>
+                        <p>状态：{request.status}</p>
+                        {request.assigned_worker_name && (
+                          <p>维修人员：{request.assigned_worker_name}</p>
+                        )}
+                        {request.resolution_notes && (
+                          <p>处理结果：{request.resolution_notes}</p>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="messages" className="space-y-4">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <Card className="lg:col-span-1">
+                <CardHeader>
+                  <CardTitle>未读消息</CardTitle>
+                  <CardDescription>需要您回复的消息</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {[
+                      { id: 1, sender: "房东", content: "请问什么时候可以看房？", time: "10分钟前", unread: true },
+                      { id: 2, sender: "维修人员", content: "维修师傅什么时候能来？", time: "30分钟前", unread: true },
+                    ].map((message) => (
+                      <div
+                        key={message.id}
+                        className={`flex justify-between items-start p-3 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors ${selectedChat?.id === message.id ? "bg-gray-100" : ""}`}
+                        onClick={() => setSelectedChat(message)}
+                      >
+                        <div>
+                          <p className="font-medium">{message.sender}</p>
+                          <p className="text-sm text-gray-600">{message.content}</p>
+                          <p className="text-sm text-gray-500">{message.time}</p>
+                        </div>
+                        {message.unread && (
+                          <Badge variant="default">未读</Badge>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="lg:col-span-2">
+                <CardHeader>
+                  <CardTitle>消息历史</CardTitle>
+                  <CardDescription>最近的对话记录</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {selectedChat ? (
+                    <div className="flex flex-col h-[500px]">
+                      <div className="flex-1 overflow-y-auto space-y-4 mb-4">
+                        {[
+                          { id: 1, sender: selectedChat.sender, content: selectedChat.content, time: selectedChat.time, isLandlord: true },
+                          { id: 2, sender: "我", content: "您好，请问有什么可以帮您？", time: "刚刚", isLandlord: false },
+                        ].map((message) => (
+                          <div
+                            key={message.id}
+                            className={`flex ${message.isLandlord ? "justify-start" : "justify-end"}`}
+                          >
+                            <div
+                              className={`max-w-[70%] p-3 rounded-lg ${message.isLandlord ? "bg-gray-100" : "bg-blue-100"}`}
+                            >
+                              <p className="font-medium">{message.sender}</p>
+                              <p className="text-sm">{message.content}</p>
+                              <p className="text-xs text-gray-500 mt-1">{message.time}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={messageInput}
+                          onChange={(e) => setMessageInput(e.target.value)}
+                          placeholder="输入消息..."
+                          className="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <Button
+                          onClick={() => {
+                            if (messageInput.trim()) {
+                              // 这里添加发送消息的逻辑
+                              setMessageInput("")
+                            }
+                          }}
+                        >
+                          <Send className="h-4 w-4 mr-2" />
+                          发送
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-gray-500">
+                      请选择一条消息开始对话
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
         </Tabs>
       </div>
+
+      {/* Contract Preview Modal */}
+      <Dialog open={contractPreview.isOpen} onOpenChange={handleClosePreview}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>租赁合同预览</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <div>
+                <p>房东：{contractPreview.landlord}</p>
+                <p>房源：{contractPreview.property}</p>
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => handleDownloadContract(contractPreview.contractUrl)}
+              >
+                <Download className="w-4 h-4 mr-2" />
+                下载合同
+              </Button>
+            </div>
+            <iframe
+              src={contractPreview.contractUrl}
+              className="w-full h-[600px] border"
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
