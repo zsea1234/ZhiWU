@@ -8,6 +8,7 @@ import {
   UserNotificationSettings
 } from '../models/user';
 import { ApiPaginatedResponse } from '../client/types';
+import { LoginInput, AuthResponse } from '../models/auth';
 
 /**
  * 用户角色类型
@@ -50,18 +51,39 @@ export interface RegisterRequest {
 }
 
 /**
- * 认证响应
- */
-export interface AuthResponse {
-  access_token: string;
-  user: User;
-}
-
-/**
  * 用户服务
  * 处理用户相关的API请求
  */
 export const userService = {
+  /**
+   * 用户登录
+   * @param data 登录数据
+   * @returns 认证响应
+   */
+  login: async (data: LoginInput): Promise<AuthResponse> => {
+    const response = await apiClient.post<AuthResponse, LoginInput>(API_ENDPOINTS.AUTH.LOGIN, data);
+    
+    // 保存令牌到本地存储
+    if (response.access_token) {
+      localStorage.setItem('access_token', response.access_token);
+      // 保存用户信息
+      localStorage.setItem('user', JSON.stringify(response.user));
+    }
+    
+    return response;
+  },
+
+  /**
+   * 检查用户是否已认证
+   * @returns 是否已认证
+   */
+  isAuthenticated: (): boolean => {
+    if (typeof window === 'undefined') {
+      return false;
+    }
+    return !!localStorage.getItem('access_token');
+  },
+
   /**
    * 获取当前用户信息
    * @returns 当前用户信息

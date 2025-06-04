@@ -3,7 +3,7 @@
  */
 
 // API基础URL
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000/api/v1';
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5001/api/v1';
 
 // API超时时间（毫秒）
 export const API_TIMEOUT = 15000;

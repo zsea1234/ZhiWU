@@ -7,14 +7,14 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Home, Eye, EyeOff, Loader2 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { userService } from "@/lib/api/services/userService"
+import { authService } from "@/lib/api/services/authService"
 import { getFriendlyErrorMessage } from "@/lib/api/client/errorHandler"
+import type { UserRole } from "@/lib/api/models/user"
 
 /**
  * 登录页面组件
@@ -27,13 +27,11 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
+  const [selectedRole, setSelectedRole] = useState<UserRole>("tenant")
   const [formData, setFormData] = useState({
     username_or_email: "",
-    password: "",
-    remember_me: false,
-    role: "tenant" as "tenant" | "landlord" | "admin",
+    password: ""
   })
-  const [showRoleSelection, setShowRoleSelection] = useState(false)
   const router = useRouter()
 
   /**
@@ -48,12 +46,11 @@ export default function LoginPage() {
     setError("")
 
     try {
-      // 使用userService进行登录
-      const authData = await userService.login(formData);
+      // 使用authService进行登录
+      const authData = await authService.login(formData);
       
-      // 根据用户角色重定向到相应的仪表板
-      const role = authData.user.role;
-      router.push(`/dashboard/${role}`);
+      // 根据选择的角色重定向到相应的仪表板
+      router.push(`/dashboard/${selectedRole}`);
     } catch (err) {
       // 使用统一的错误处理
       setError(getFriendlyErrorMessage(err as any));
@@ -72,6 +69,16 @@ export default function LoginPage() {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
     setFormData((prev) => ({ ...prev, [name]: value }))
+  }
+
+  /**
+   * 角色选择处理函数
+   * 
+   * 更新表单中的角色选择
+   * @param value - 选择的角色值
+   */
+  const handleRoleChange = (value: UserRole) => {
+    setSelectedRole(value)
   }
 
   return (
@@ -101,33 +108,27 @@ export default function LoginPage() {
 
             {/* 登录表单 */}
             <form onSubmit={handleSubmit} className="space-y-4">
-              {/* 角色选择区域 */}
+              {/* 角色选择区 */}
               <div className="space-y-2">
-                <Label>登录身份</Label>
-                <div className="flex space-x-4">
+                <Label>选择角色</Label>
+                <RadioGroup
+                  value={selectedRole}
+                  onValueChange={handleRoleChange}
+                  className="flex space-x-4"
+                >
                   <div className="flex items-center space-x-2">
-                    <RadioGroup
-                      value={formData.role}
-                      onValueChange={(value: "tenant" | "landlord" | "admin") =>
-                        setFormData((prev) => ({ ...prev, role: value }))
-                      }
-                      className="flex space-x-4"
-                    >
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="tenant" id="tenant" />
-                        <Label htmlFor="tenant">租客</Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="landlord" id="landlord" />
-                        <Label htmlFor="landlord">房东</Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="admin" id="admin" />
-                        <Label htmlFor="admin">管理员</Label>
-                      </div>
-                    </RadioGroup>
+                    <RadioGroupItem value="tenant" id="tenant" />
+                    <Label htmlFor="tenant">租客</Label>
                   </div>
-                </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="landlord" id="landlord" />
+                    <Label htmlFor="landlord">房东</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="admin" id="admin" />
+                    <Label htmlFor="admin">管理员</Label>
+                  </div>
+                </RadioGroup>
               </div>
 
               {/* 用户名/邮箱输入区 */}
@@ -174,18 +175,8 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              {/* 记住我和忘记密码区 */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="remember_me"
-                    checked={formData.remember_me}
-                    onCheckedChange={(checked) => setFormData((prev) => ({ ...prev, remember_me: checked as boolean }))}
-                  />
-                  <Label htmlFor="remember_me" className="text-sm">
-                    记住我
-                  </Label>
-                </div>
+              {/* 忘记密码区 */}
+              <div className="flex items-center justify-end">
                 <Link href="/auth/forgot-password" className="text-sm text-blue-600 hover:underline">
                   忘记密码？
                 </Link>
