@@ -1016,14 +1016,14 @@ export default function LandlordDashboard() {
                             <span className="text-green-600 font-medium">¥{property.rent_price_monthly}/月</span>
                           </div>
                           <div className="flex flex-wrap gap-1">
-                            {property.amenities.slice(0, 3).map((amenity: string, index: number) => (
+                            {(Array.isArray(property.amenities) ? property.amenities : []).slice(0, 3).map((amenity: string, index: number) => (
                               <Badge key={index} variant="outline" className="text-xs">
                                 {amenity}
                               </Badge>
                             ))}
-                            {property.amenities.length > 3 && (
+                            {(Array.isArray(property.amenities) ? property.amenities : []).length > 3 && (
                               <Badge variant="outline" className="text-xs">
-                                +{property.amenities.length - 3}
+                                +{(Array.isArray(property.amenities) ? property.amenities : []).length - 3}
                               </Badge>
                             )}
                           </div>
