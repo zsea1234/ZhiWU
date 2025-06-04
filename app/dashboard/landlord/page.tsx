@@ -42,7 +42,7 @@ interface Message {
 }
 
 interface Booking {
-  id: number
+  booking_id: number
   property_id: number
   tenant_id: number
   landlord_id: number
@@ -53,16 +53,55 @@ interface Booking {
   created_at: string
   updated_at: string
   is_deleted: boolean
+  landlord?: {
+    id: number
+    username: string
+    phone: string
+  }
 }
 
-interface Lease {
-  id: number
-  tenant: string
-  property: string
-  startDate: string
-  endDate: string
-  rent: string
-  contractUrl?: string
+interface LeaseInfo {
+  id: number;
+  property_id: number;
+  tenant_id: number;
+  landlord_id: number;
+  start_date: string;
+  end_date: string;
+  monthly_rent_amount: string;
+  deposit_amount: string;
+  status: 'draft' | 'pending_tenant_signature' | 'pending_landlord_signature' | 'active' | 'expired' | 'terminated_early' | 'payment_due';
+  landlord_signed_at: string | null;
+  tenant_signed_at: string | null;
+  created_at: string;
+  updated_at: string;
+  additional_terms: string | null;
+  contract_document_url: string | null;
+  payment_due_day_of_month: number;
+  termination_date: string | null;
+  termination_reason: string | null;
+  landlord_info: {
+    id: number;
+    username: string;
+    email: string;
+    phone: string;
+  };
+  tenant_info: {
+    id: number;
+    username: string;
+    email: string;
+    phone: string;
+  };
+  property_summary: {
+    id: number;
+    title: string;
+    address_line1: string;
+    city: string;
+    district: string;
+    property_type: string;
+    area_sqm: number;
+    bedrooms: number;
+    bathrooms: number;
+  };
 }
 
 interface ContractPreview {
@@ -94,6 +133,11 @@ interface DeleteDialog {
   propertyTitle: string
 }
 
+interface EditLeaseDialog {
+  isOpen: boolean;
+  lease: LeaseInfo | null;
+}
+
 export default function LandlordDashboard() {
   const router = useRouter()
   const { toast } = useToast()
@@ -101,7 +145,7 @@ export default function LandlordDashboard() {
   const [selectedChat, setSelectedChat] = useState<Message | null>(null)
   const [messageInput, setMessageInput] = useState("")
   const [bookings, setBookings] = useState<Booking[]>([])
-  const [leases, setLeases] = useState<Lease[]>([])
+  const [leases, setLeases] = useState<LeaseInfo[]>([])
   const [contractPreview, setContractPreview] = useState<ContractPreview>({
     isOpen: false,
     contractUrl: "",
@@ -131,6 +175,21 @@ export default function LandlordDashboard() {
   })
   const [pendingBookings, setPendingBookings] = useState<Booking[]>([])
   const [isLoadingBookings, setIsLoadingBookings] = useState(true)
+  const [isLoadingLeases, setIsLoadingLeases] = useState(true)
+  const [selectedLease, setSelectedLease] = useState<LeaseInfo | null>(null)
+  const [editLeaseDialog, setEditLeaseDialog] = useState<EditLeaseDialog>({
+    isOpen: false,
+    lease: null
+  });
+  const [editedLease, setEditedLease] = useState({
+    start_date: '',
+    end_date: '',
+    monthly_rent_amount: '',
+    deposit_amount: '',
+    additional_terms: '',
+    payment_due_day_of_month: 1,
+    status: 'draft' as 'draft' | 'pending_tenant_signature' | 'pending_landlord_signature' | 'active' | 'expired' | 'terminated_early' | 'payment_due'
+  });
 
   useEffect(() => {
     // 从localStorage获取用户信息
@@ -190,7 +249,7 @@ export default function LandlordDashboard() {
 
   const handleConfirmBooking = (bookingId: number) => {
     setBookings(bookings.map(booking =>
-      booking.id === bookingId
+      booking.booking_id === bookingId
         ? { ...booking, status: 'CONFIRMED_BY_LANDLORD' }
         : booking
     ))
@@ -198,20 +257,61 @@ export default function LandlordDashboard() {
 
   const handleCancelBooking = (bookingId: number) => {
     setBookings(bookings.map(booking =>
-      booking.id === bookingId
+      booking.booking_id === bookingId
         ? { ...booking, status: 'CANCELLED_BY_LANDLORD' }
         : booking
     ))
   }
 
-  const handleViewContract = (lease: Lease) => {
-    setContractPreview({
-      isOpen: true,
-      contractUrl: lease.contractUrl || "",
-      tenant: lease.tenant,
-      property: lease.property,
-      contractData: undefined // 真实环境下应从API获取合同数据
-    })
+  const handleViewContract = (lease: LeaseInfo) => {
+    if (lease.status === 'draft') {
+      // 如果是草稿状态，打开编辑对话框
+      setEditLeaseDialog({
+        isOpen: true,
+        lease: lease
+      });
+      setEditedLease({
+        start_date: lease.start_date.split('T')[0], // 确保日期格式正确
+        end_date: lease.end_date.split('T')[0], // 确保日期格式正确
+        monthly_rent_amount: parseFloat(lease.monthly_rent_amount).toFixed(2),
+        deposit_amount: parseFloat(lease.deposit_amount).toFixed(2),
+        additional_terms: lease.additional_terms || '',
+        payment_due_day_of_month: lease.payment_due_day_of_month,
+        status: lease.status
+      });
+    } else {
+      // 其他状态显示合同预览
+      setContractPreview({
+        isOpen: true,
+        contractUrl: `/api/leases/${lease.id}/contract`,
+        tenant: lease.tenant_info.username,
+        property: lease.property_summary.title,
+        contractData: {
+          contractNumber: `LEASE-${lease.id}`,
+          startDate: new Date(lease.start_date).toLocaleDateString(),
+          endDate: new Date(lease.end_date).toLocaleDateString(),
+          monthlyRent: `¥${parseFloat(lease.monthly_rent_amount).toLocaleString()}`,
+          deposit: `¥${parseFloat(lease.deposit_amount).toLocaleString()}`,
+          paymentMethod: '银行转账',
+          terms: [
+            '租期：' + new Date(lease.start_date).toLocaleDateString() + ' 至 ' + new Date(lease.end_date).toLocaleDateString(),
+            '月租金：¥' + parseFloat(lease.monthly_rent_amount).toLocaleString(),
+            '押金：¥' + parseFloat(lease.deposit_amount).toLocaleString(),
+            '支付方式：银行转账',
+            '房屋地址：' + lease.property_summary.address_line1,
+            '房屋类型：' + lease.property_summary.property_type,
+            '面积：' + lease.property_summary.area_sqm + '平方米',
+            '卧室数：' + lease.property_summary.bedrooms + '间',
+            '卫生间数：' + lease.property_summary.bathrooms + '间'
+          ],
+          signatures: {
+            landlord: user?.username || lease.landlord_info.username,
+            tenant: lease.tenant_info.username,
+            date: lease.landlord_signed_at ? new Date(lease.landlord_signed_at).toLocaleDateString() : '未签署'
+          }
+        }
+      });
+    }
   }
 
   const handleClosePreview = () => {
@@ -337,6 +437,9 @@ export default function LandlordDashboard() {
     if (value === 'bookings') {
       console.log('Fetching pending bookings...');
       fetchPendingBookings();
+    } else if (value === 'leases') {
+      console.log('Fetching leases...');
+      fetchLeases();
     }
   }
 
@@ -396,6 +499,12 @@ export default function LandlordDashboard() {
       return;
     }
 
+    // 将状态转换为后端期望的格式
+    const statusMap = {
+      'CONFIRMED_BY_LANDLORD': 'confirmed_by_landlord',
+      'CANCELLED_BY_LANDLORD': 'cancelled_by_landlord'
+    };
+
     try {
       const url = `http://localhost:5001/api/v1/bookings/${bookingId}/status`;
       console.log('Sending request to:', url);
@@ -406,7 +515,7 @@ export default function LandlordDashboard() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
         },
-        body: JSON.stringify({ status })
+        body: JSON.stringify({ status: statusMap[status] })
       });
 
       console.log('Status update response:', response.status);
@@ -432,6 +541,257 @@ export default function LandlordDashboard() {
       });
     }
   }
+
+  const fetchLeases = async () => {
+    console.log('=== 开始获取租约列表 ===');
+    setIsLoadingLeases(true);
+    try {
+      const response = await fetch('http://localhost:5001/api/v1/leases', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+        }
+      });
+      
+      console.log('租约列表响应状态:', response.status);
+      const data = await response.json();
+      console.log('租约列表数据:', JSON.stringify(data, null, 2));
+      
+      if (response.ok) {
+        const leases = data.data.items || [];
+        console.log('解析后的租约列表:', JSON.stringify(leases, null, 2));
+        setLeases(leases);
+        toast({
+          title: "Success",
+          description: `获取到 ${leases.length} 条租约记录`
+        });
+      } else {
+        console.error('获取租约列表失败:', data);
+        toast({
+          title: "Error",
+          description: data.message || "获取租约列表失败",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('获取租约列表时发生错误:', error);
+      toast({
+        title: "Error",
+        description: "获取租约列表时发生错误",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoadingLeases(false);
+      console.log('=== 完成获取租约列表 ===');
+    }
+  }
+
+  const handleSignLease = async (leaseId: number) => {
+    console.log('handleSignLease called with leaseId:', leaseId);
+    
+    if (!leaseId) {
+      console.error('Invalid leaseId:', leaseId);
+      toast({
+        title: "Error",
+        description: "无效的租约ID",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      const url = `http://localhost:5001/api/v1/leases/${leaseId}/sign`;
+      console.log('Sending request to:', url);
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+        }
+      });
+
+      console.log('Sign lease response:', response.status);
+      const data = await response.json();
+      console.log('Sign lease data:', data);
+
+      if (response.ok) {
+        toast({
+          title: "Success",
+          description: "租约签署成功"
+        });
+        // 刷新租约列表
+        fetchLeases();
+      } else {
+        throw new Error(data.message || '签署租约失败');
+      }
+    } catch (error) {
+      console.error('Error signing lease:', error);
+      toast({
+        title: "Error",
+        description: "签署租约失败",
+        variant: "destructive"
+      });
+    }
+  }
+
+  const handleTerminateLease = async (leaseId: number) => {
+    console.log('handleTerminateLease called with leaseId:', leaseId);
+    
+    if (!leaseId) {
+      console.error('Invalid leaseId:', leaseId);
+      toast({
+        title: "Error",
+        description: "无效的租约ID",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      const url = `http://localhost:5001/api/v1/leases/${leaseId}`;
+      console.log('Sending request to:', url);
+      
+      const response = await fetch(url, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+        },
+        body: JSON.stringify({ status: 'terminated' })
+      });
+
+      console.log('Terminate lease response:', response.status);
+      const data = await response.json();
+      console.log('Terminate lease data:', data);
+
+      if (response.ok) {
+        toast({
+          title: "Success",
+          description: "租约已终止"
+        });
+        // 刷新租约列表
+        fetchLeases();
+      } else {
+        throw new Error(data.message || '终止租约失败');
+      }
+    } catch (error) {
+      console.error('Error terminating lease:', error);
+      toast({
+        title: "Error",
+        description: "终止租约失败",
+        variant: "destructive"
+      });
+    }
+  }
+
+  const handleEditLease = async () => {
+    if (!editLeaseDialog.lease) return;
+
+    try {
+      console.log('=== 开始编辑租约 ===');
+      console.log('租约ID:', editLeaseDialog.lease.id);
+      console.log('原始租约数据:', {
+        id: editLeaseDialog.lease.id,
+        status: editLeaseDialog.lease.status,
+        additional_terms: editLeaseDialog.lease.additional_terms,
+        landlord_signed_at: editLeaseDialog.lease.landlord_signed_at,
+        tenant_signed_at: editLeaseDialog.lease.tenant_signed_at
+      });
+      console.log('编辑后的租约数据:', {
+        status: editedLease.status,
+        additional_terms: editedLease.additional_terms
+      });
+
+      // 检查租约状态
+      if (editLeaseDialog.lease.status !== 'draft') {
+        console.error('只能编辑草稿状态的租约');
+        toast({
+          title: "Error",
+          description: "只能编辑草稿状态的租约",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // 直接发送状态和附加条款
+      const formattedData = {
+        status: 'pending_tenant_signature', // 固定为待租客签署状态
+        additional_terms: editedLease.additional_terms || null
+      };
+
+      console.log('=== 发送到后端的数据 ===');
+      console.log('请求URL:', `http://localhost:5001/api/v1/leases/${editLeaseDialog.lease.id}`);
+      console.log('请求方法:', 'PUT');
+      console.log('请求头:', {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+      });
+      console.log('请求体:', JSON.stringify(formattedData, null, 2));
+
+      const response = await fetch(`http://localhost:5001/api/v1/leases/${editLeaseDialog.lease.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+        },
+        body: JSON.stringify(formattedData)
+      });
+
+      console.log('=== 后端响应 ===');
+      console.log('响应状态码:', response.status);
+      console.log('响应头:', Object.fromEntries(response.headers.entries()));
+
+      const responseData = await response.json();
+      console.log('响应数据:', JSON.stringify(responseData, null, 2));
+
+      if (!response.ok) {
+        console.log('=== 错误详情 ===');
+        if (responseData.errors) {
+          console.log('验证错误:', JSON.stringify(responseData.errors, null, 2));
+          const validationErrors = Object.entries(responseData.errors as Record<string, string[]>)
+            .map(([field, msgs]) => `${field}: ${msgs.join(', ')}`)
+            .join('\n');
+          throw new Error(`验证错误:\n${validationErrors}`);
+        }
+        throw new Error(responseData.message || 'Failed to update lease');
+      }
+
+      // 验证响应数据中的状态是否正确更新
+      if (responseData.data?.status !== 'pending_tenant_signature') {
+        console.error('状态更新失败:', {
+          expected: 'pending_tenant_signature',
+          actual: responseData.data?.status
+        });
+        throw new Error('租约状态更新失败');
+      }
+
+      console.log('=== 更新成功 ===');
+      console.log('更新后的租约数据:', JSON.stringify(responseData, null, 2));
+
+      toast({
+        title: "Success",
+        description: "租约更新成功"
+      });
+
+      // 刷新租约列表
+      console.log('=== 刷新租约列表 ===');
+      await fetchLeases();
+      
+      // 关闭编辑对话框
+      setEditLeaseDialog({ isOpen: false, lease: null });
+    } catch (error) {
+      console.error('=== 错误详情 ===');
+      console.error('错误名称:', error instanceof Error ? error.name : 'Unknown');
+      console.error('错误信息:', error instanceof Error ? error.message : 'Unknown error');
+      console.error('错误堆栈:', error instanceof Error ? error.stack : undefined);
+      
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "更新租约失败",
+        variant: "destructive"
+      });
+    }
+  };
 
   if (!user) {
     return (
@@ -721,7 +1081,7 @@ export default function LandlordDashboard() {
                   ) : (
                     <div className="space-y-4">
                       {pendingBookings.map((booking) => (
-                        <div key={booking.id} className="flex justify-between items-center p-4 border rounded-lg">
+                        <div key={booking.booking_id} className="flex justify-between items-center p-4 border rounded-lg">
                           <div>
                             <p className="font-medium">预约时间：{new Date(booking.requested_datetime).toLocaleString()}</p>
                             <p className="text-sm text-gray-600">租客备注：{booking.notes_for_landlord || '无'}</p>
@@ -733,7 +1093,7 @@ export default function LandlordDashboard() {
                               size="sm"
                               onClick={() => {
                                 console.log('Confirm button clicked for booking:', booking);
-                                handleBookingStatus(booking.id, 'CONFIRMED_BY_LANDLORD');
+                                handleBookingStatus(booking.booking_id, 'CONFIRMED_BY_LANDLORD');
                               }}
                             >
                               确认预约
@@ -743,7 +1103,7 @@ export default function LandlordDashboard() {
                               size="sm"
                               onClick={() => {
                                 console.log('Cancel button clicked for booking:', booking);
-                                handleBookingStatus(booking.id, 'CANCELLED_BY_LANDLORD');
+                                handleBookingStatus(booking.booking_id, 'CANCELLED_BY_LANDLORD');
                               }}
                             >
                               取消预约
@@ -789,30 +1149,92 @@ export default function LandlordDashboard() {
                   <CardDescription>正在进行的租约</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-4">
-                    {leases.map((lease) => (
-                      <div key={lease.id} className="border-b pb-4 last:border-0">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <p className="font-medium">{lease.tenant}</p>
-                            <p className="text-sm text-gray-600">{lease.property}</p>
-                            <p className="text-sm text-gray-500">租期：{lease.startDate} 至 {lease.endDate}</p>
-                          </div>
-                          <div className="flex flex-col items-end gap-2">
-                            <p className="font-medium text-green-600">{lease.rent}</p>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleViewContract(lease)}
-                            >
-                              <FileText className="h-4 w-4 mr-2" />
-                              查看合同
-                            </Button>
+                  {isLoadingLeases ? (
+                    <div className="flex justify-center items-center py-4">
+                      <Loader2 className="h-6 w-6 animate-spin" />
+                      <span className="ml-2">加载中...</span>
+                    </div>
+                  ) : leases.length === 0 ? (
+                    <div className="text-center py-8">
+                      <div className="mb-4">
+                        <AlertCircle className="h-12 w-12 text-gray-400 mx-auto" />
+                      </div>
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">暂无租约</h3>
+                      <p className="text-gray-500">当有新的租约时，将显示在这里</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {leases.map((lease) => (
+                        <div key={lease.id} className="border-b pb-4 last:border-0">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <p className="font-medium">{lease.tenant_info.username}</p>
+                              <p className="text-sm text-gray-600">{lease.property_summary.title}</p>
+                              <p className="text-sm text-gray-500">
+                                租期：{new Date(lease.start_date).toLocaleDateString()} 至 {new Date(lease.end_date).toLocaleDateString()}
+                              </p>
+                              <p className="text-sm text-gray-500">
+                                状态：{
+                                  lease.status === 'draft' ? '草稿' :
+                                  lease.status === 'pending_tenant_signature' ? '待租客签署' :
+                                  lease.status === 'pending_landlord_signature' ? '待房东签署' :
+                                  lease.status === 'active' ? '生效中' :
+                                  lease.status === 'expired' ? '已过期' :
+                                  lease.status === 'terminated_early' ? '提前终止' :
+                                  lease.status === 'payment_due' ? '待付款' : '未知状态'
+                                }
+                              </p>
+                            </div>
+                            <div className="flex flex-col items-end gap-2">
+                              <p className="font-medium text-green-600">¥{parseFloat(lease.monthly_rent_amount).toLocaleString()}/月</p>
+                              <div className="flex gap-2">
+                                {lease.status === 'draft' && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleViewContract(lease)}
+                                  >
+                                    <FileText className="h-4 w-4 mr-2" />
+                                    编辑合同
+                                  </Button>
+                                )}
+                                {lease.status === 'pending_landlord_signature' && !lease.landlord_signed_at && (
+                                  <Button
+                                    variant="default"
+                                    size="sm"
+                                    onClick={() => handleSignLease(lease.id)}
+                                  >
+                                    <FileText className="h-4 w-4 mr-2" />
+                                    签署合同
+                                  </Button>
+                                )}
+                                {(lease.status === 'active' || lease.status === 'expired') && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleViewContract(lease)}
+                                  >
+                                    <FileText className="h-4 w-4 mr-2" />
+                                    查看合同
+                                  </Button>
+                                )}
+                                {lease.status === 'active' && (
+                                  <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    onClick={() => handleTerminateLease(lease.id)}
+                                  >
+                                    <AlertTriangle className="h-4 w-4 mr-2" />
+                                    终止合同
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -823,18 +1245,31 @@ export default function LandlordDashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {[
-                      { tenant: "王五", property: "海淀区学院路 1室1厅", endDate: "2024-04-15", daysLeft: 15 },
-                    ].map((lease, i) => (
-                      <div key={i} className="flex justify-between items-center">
-                        <div>
-                          <p className="font-medium">{lease.tenant}</p>
-                          <p className="text-sm text-gray-600">{lease.property}</p>
-                          <p className="text-sm text-gray-500">到期日：{lease.endDate}</p>
-                        </div>
-                        <Badge variant="destructive">剩余 {lease.daysLeft} 天</Badge>
-                      </div>
-                    ))}
+                    {leases
+                      .filter(lease => {
+                        const endDate = new Date(lease.end_date)
+                        const today = new Date()
+                        const diffTime = endDate.getTime() - today.getTime()
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+                        return diffDays <= 30 && diffDays > 0
+                      })
+                      .map((lease) => {
+                        const endDate = new Date(lease.end_date)
+                        const today = new Date()
+                        const diffTime = endDate.getTime() - today.getTime()
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+                        
+                        return (
+                          <div key={lease.id} className="flex justify-between items-center">
+                            <div>
+                              <p className="font-medium">{lease.tenant_info.username}</p>
+                              <p className="text-sm text-gray-600">{lease.property_summary.title}</p>
+                              <p className="text-sm text-gray-500">到期日：{endDate.toLocaleDateString()}</p>
+                            </div>
+                            <Badge variant="destructive">剩余 {diffDays} 天</Badge>
+                          </div>
+                        )
+                      })}
                   </div>
                 </CardContent>
               </Card>
@@ -1186,6 +1621,124 @@ export default function LandlordDashboard() {
               onClick={() => deleteDialog.propertyId && handleDeleteProperty(deleteDialog.propertyId)}
             >
               删除
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Lease Dialog */}
+      <Dialog open={editLeaseDialog.isOpen} onOpenChange={(open) => setEditLeaseDialog(prev => ({ ...prev, isOpen: open }))}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>编辑租约</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">合同状态</label>
+              <div className="mt-1 p-2 bg-gray-100 rounded-md">
+                <p className="text-sm text-gray-600">
+                  {(() => {
+                    const status = editLeaseDialog.lease?.status;
+                    if (!status) return '未知状态';
+                    
+                    const statusMap = {
+                      'draft': '草稿',
+                      'pending_tenant_signature': '待租客签署',
+                      'pending_landlord_signature': '待房东签署',
+                      'active': '生效中',
+                      'expired': '已过期',
+                      'terminated_early': '提前终止',
+                      'payment_due': '待付款'
+                    };
+                    
+                    return statusMap[status] || '未知状态';
+                  })()}
+                </p>
+                {editLeaseDialog.lease?.status === 'draft' && (
+                  <p className="text-sm text-blue-600 mt-1">
+                    保存后将变为"待租客签署"状态
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium">开始日期</label>
+                <Input
+                  type="date"
+                  value={editedLease.start_date}
+                  disabled
+                  className="bg-gray-100"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">结束日期</label>
+                <Input
+                  type="date"
+                  value={editedLease.end_date}
+                  disabled
+                  className="bg-gray-100"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium">月租金</label>
+                <Input
+                  type="number"
+                  value={editedLease.monthly_rent_amount}
+                  disabled
+                  className="bg-gray-100"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">押金</label>
+                <Input
+                  type="number"
+                  value={editedLease.deposit_amount}
+                  disabled
+                  className="bg-gray-100"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium">每月付款日</label>
+              <Input
+                type="number"
+                min="1"
+                max="31"
+                value={editedLease.payment_due_day_of_month}
+                disabled
+                className="bg-gray-100"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">附加条款</label>
+              <Textarea
+                value={editedLease.additional_terms}
+                onChange={(e) => setEditedLease(prev => ({ ...prev, additional_terms: e.target.value }))}
+                placeholder="输入附加条款..."
+                rows={4}
+              />
+              <p className="text-sm text-gray-500 mt-1">
+                {editLeaseDialog.lease?.status === 'draft' ? 
+                  '您可以修改附加条款，保存后将变为待租客签署状态' : 
+                  '您可以修改附加条款，其他信息创建后不可更改'}
+              </p>
+            </div>
+          </div>
+          <div className="flex justify-end gap-4 mt-4">
+            <Button
+              variant="outline"
+              onClick={() => setEditLeaseDialog({ isOpen: false, lease: null })}
+            >
+              取消
+            </Button>
+            <Button 
+              onClick={handleEditLease}
+              disabled={editLeaseDialog.lease?.status !== 'draft'}
+            >
+              保存
             </Button>
           </div>
         </DialogContent>
