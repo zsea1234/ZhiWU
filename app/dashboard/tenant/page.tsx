@@ -21,6 +21,7 @@ import {
   CheckCircle,
   Clock,
   Settings,
+  MapPin,
 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -55,6 +56,10 @@ interface Booking {
     title: string
     address_line1: string
     city: string
+  }
+  landlord?: {
+    username: string
+    phone: string
   }
 }
 
@@ -189,11 +194,15 @@ export default function TenantDashboard() {
 
   const fetchBookings = async () => {
     try {
+      setIsLoadingBookings(true)
       const token = localStorage.getItem('auth_token')
       if (!token) {
         router.push('/auth/login')
         return
       }
+
+      console.log('Fetching bookings with token:', token)
+      
       const response = await fetch('http://localhost:5001/api/v1/bookings/tenant', {
         method: 'GET',
         headers: {
@@ -202,38 +211,38 @@ export default function TenantDashboard() {
         }
       })
       
+      console.log('Bookings response status:', response.status)
+      
       if (!response.ok) {
-        if (response.status === 405) {
-          // 如果服务器不支持GET方法，尝试使用POST方法
-          const postResponse = await fetch('http://localhost:5001/api/v1/bookings', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            }
-          })
-          
-          if (!postResponse.ok) {
-            throw new Error(`HTTP error! status: ${postResponse.status}`)
-          }
-          
-          const data = await postResponse.json()
-          setBookings(data.data || [])
-        } else {
-          throw new Error(`HTTP error! status: ${response.status}`)
-        }
+        const errorData = await response.json().catch(() => null)
+        console.error('Error response:', errorData)
+        throw new Error(errorData?.message || `HTTP error! status: ${response.status}`)
+      }
+      
+      const data = await response.json()
+      console.log('Bookings response data:', data)
+      
+      if (data.success && data.data && data.data.items) {
+        setBookings(data.data.items)
       } else {
-        const data = await response.json()
-        setBookings(data.data || [])
+        console.error('Invalid data format:', data)
+        setBookings([])
+        toast({
+          title: "错误",
+          description: "预约数据格式错误",
+          variant: "destructive"
+        })
       }
     } catch (error) {
       console.error('Error fetching bookings:', error)
       toast({
         title: "错误",
-        description: "获取预约列表失败",
+        description: error instanceof Error ? error.message : "获取预约列表失败",
         variant: "destructive"
       })
-      setBookings([]) // 设置空数组作为默认值
+      setBookings([])
+    } finally {
+      setIsLoadingBookings(false)
     }
   }
 
@@ -361,6 +370,22 @@ export default function TenantDashboard() {
     }
   }
 
+  const getStatusBadge = (status: string) => {
+    const statusMap: Record<string, { label: string; variant: string }> = {
+      'PENDING_CONFIRMATION': { label: '待确认', variant: 'warning' },
+      'CONFIRMED_BY_LANDLORD': { label: '已确认', variant: 'success' },
+      'CANCELLED_BY_TENANT': { label: '已取消', variant: 'destructive' },
+      'CANCELLED_BY_LANDLORD': { label: '房东已取消', variant: 'destructive' },
+      'COMPLETED': { label: '已完成', variant: 'secondary' },
+      'EXPIRED': { label: '已过期', variant: 'secondary' }
+    }
+
+    // 如果状态不在预定义列表中，返回默认值
+    const statusInfo = statusMap[status] || { label: '未知状态', variant: 'secondary' }
+    
+    return <Badge variant={statusInfo.variant as any}>{statusInfo.label}</Badge>
+  }
+
   const handleCancelBooking = async (bookingId: number) => {
     try {
       const token = localStorage.getItem('auth_token')
@@ -371,24 +396,25 @@ export default function TenantDashboard() {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          status: 'CANCELLED_BY_TENANT'
+          reason: "租客取消预约"
         })
       })
 
       if (!response.ok) {
-        throw new Error('取消预约失败')
+        const errorData = await response.json()
+        throw new Error(errorData.message || '取消预约失败')
       }
 
       toast({
         title: "成功",
         description: "预约已取消"
       })
-      fetchBookings()
+      fetchBookings() // 重新获取预约列表
     } catch (error) {
       console.error('Error cancelling booking:', error)
       toast({
         title: "错误",
-        description: "取消预约失败",
+        description: error instanceof Error ? error.message : "取消预约失败",
         variant: "destructive"
       })
     }
@@ -608,30 +634,66 @@ export default function TenantDashboard() {
               <div className="flex justify-center">
                 <Loader2 className="w-6 h-6 animate-spin" />
               </div>
+            ) : bookings.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-gray-500 mb-4">暂无预约记录</p>
+                <Button onClick={() => router.push('/dashboard/tenant/properties')}>
+                  去预约看房
+                </Button>
+              </div>
             ) : (
               <div className="grid gap-4">
                 {bookings.map((booking) => (
                   <Card key={booking.booking_id}>
                     <CardHeader>
-                      <CardTitle>{booking.property?.title}</CardTitle>
-                      <CardDescription>
-                        {booking.property?.address_line1}, {booking.property?.city}
-                      </CardDescription>
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <CardTitle>{booking.property?.title || '未知房源'}</CardTitle>
+                          <CardDescription className="flex items-center gap-2 mt-2">
+                            <MapPin className="w-4 h-4" />
+                            {booking.property?.address_line1}, {booking.property?.city}
+                          </CardDescription>
+                        </div>
+                        {getStatusBadge(booking.status)}
+                      </div>
                     </CardHeader>
                     <CardContent>
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <p>预约时间：{new Date(booking.requested_datetime).toLocaleString()}</p>
-                          <p>状态：{booking.status}</p>
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-2">
+                          <Calendar className="w-4 h-4" />
+                          <span>预约时间：{new Date(booking.requested_datetime).toLocaleString()}</span>
                         </div>
-                        {booking.status === 'PENDING_CONFIRMATION' && (
-                          <Button
-                            variant="destructive"
-                            onClick={() => handleCancelBooking(booking.booking_id)}
-                          >
-                            取消预约
-                          </Button>
+                        
+                        {booking.notes_for_landlord && (
+                          <div>
+                            <p className="text-sm font-medium">给房东的留言：</p>
+                            <p className="text-sm text-gray-500">{booking.notes_for_landlord}</p>
+                          </div>
                         )}
+
+                        {booking.landlord_notes && (
+                          <div>
+                            <p className="text-sm font-medium">房东回复：</p>
+                            <p className="text-sm text-gray-500">{booking.landlord_notes}</p>
+                          </div>
+                        )}
+
+                        <div className="flex justify-between items-center">
+                          <div className="text-sm text-gray-500">
+                            房东：{booking.landlord?.username || '未知'}
+                            <br />
+                            联系电话：{booking.landlord?.phone || '未知'}
+                          </div>
+                          {(booking.status === 'PENDING_CONFIRMATION' || booking.status === 'CONFIRMED_BY_LANDLORD') && (
+                            <Button
+                              variant="destructive"
+                              onClick={() => handleCancelBooking(booking.booking_id)}
+                            >
+                              <X className="w-4 h-4 mr-2" />
+                              取消预约
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     </CardContent>
                   </Card>

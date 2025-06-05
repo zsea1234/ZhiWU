@@ -214,7 +214,7 @@ export default function PropertiesPage() {
                     <SelectValue placeholder="选择房屋类型" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">全部</SelectItem>
+                    <SelectItem value="ALL">全部</SelectItem>
                     <SelectItem value="APARTMENT">公寓</SelectItem>
                     <SelectItem value="HOUSE">别墅</SelectItem>
                     <SelectItem value="STUDIO">开间</SelectItem>
@@ -233,7 +233,7 @@ export default function PropertiesPage() {
                     <SelectValue placeholder="选择城市" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">全部</SelectItem>
+                    <SelectItem value="ALL">全部</SelectItem>
                     <SelectItem value="北京">北京</SelectItem>
                     <SelectItem value="上海">上海</SelectItem>
                     <SelectItem value="广州">广州</SelectItem>
@@ -252,7 +252,7 @@ export default function PropertiesPage() {
                     <SelectValue placeholder="选择卧室数量" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="0">不限</SelectItem>
+                    <SelectItem value="622">不限</SelectItem>
                     <SelectItem value="1">1室</SelectItem>
                     <SelectItem value="2">2室</SelectItem>
                     <SelectItem value="3">3室</SelectItem>
@@ -317,49 +317,41 @@ export default function PropertiesPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {properties.map((property) => (
-            <Card key={property.id} className="overflow-hidden">
-              <div className="aspect-video relative">
+            <Card 
+              key={property.id} 
+              className="overflow-hidden"
+            >
+              <div className="relative h-48">
                 <img
                   src={property.main_image_url}
                   alt={property.title}
-                  className="object-cover w-full h-full"
+                  className="w-full h-full object-cover rounded-t-lg"
                 />
               </div>
               <CardHeader>
-                <CardTitle>{property.title}</CardTitle>
-                <CardDescription>
-                  <div className="flex items-center gap-2">
-                    <MapPin className="w-4 h-4" />
-                    {property.address_line1}, {property.city}
-                  </div>
+                <CardTitle className="text-xl">{property.title}</CardTitle>
+                <CardDescription className="flex items-center gap-2">
+                  <MapPin className="w-4 h-4" />
+                  {property.district}, {property.city}
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-2xl font-bold">¥{property.rent_price_monthly}/月</span>
-                    <span className="text-sm text-gray-500">{property.area_sqm}㎡</span>
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <p className="text-sm text-gray-500">月租金</p>
+                    <p className="text-xl font-bold">¥{property.rent_price_monthly}</p>
                   </div>
-                  <div className="flex gap-4 text-sm text-gray-500">
-                    <div className="flex items-center gap-1">
-                      <Home className="w-4 h-4" />
-                      {property.bedrooms}室
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Home className="w-4 h-4" />
-                      {property.bathrooms}卫
-                    </div>
+                  <div>
+                    <p className="text-sm text-gray-500">房型</p>
+                    <p className="text-xl font-bold">{property.bedrooms}室</p>
                   </div>
-                  <Button
-                    className="w-full"
-                    onClick={() => {
-                      setSelectedProperty(property)
-                      setBookingDialogOpen(true)
-                    }}
-                  >
-                    预约看房
-                  </Button>
                 </div>
+                <Button 
+                  className="w-full"
+                  onClick={() => router.push(`/dashboard/tenant/properties/${property.id}`)}
+                >
+                  查看详情
+                </Button>
               </CardContent>
             </Card>
           ))}
