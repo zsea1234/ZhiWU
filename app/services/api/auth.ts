@@ -1,5 +1,5 @@
 import { api } from './client'
-import { setAuthToken, setAuthUser, removeAuthToken, removeAuthUser } from './config'
+import { setAuthToken, setAuthUser, removeAuthToken, removeAuthUser, getAuthToken } from './config'
 
 export interface LoginInput {
   username_or_email: string
@@ -49,11 +49,19 @@ export const authApi = {
   },
 
   logout: async (): Promise<void> => {
+    const token = getAuthToken()
+    if (!token) {
+      console.warn('No auth token found during logout')
+      return
+    }
+
     try {
-      await api.post('/auth/logout')
+      await api.post('/auth/logout', null)
     } finally {
       removeAuthToken()
       removeAuthUser()
+      localStorage.removeItem('user_role')
+      localStorage.removeItem('user_info')
     }
   },
 

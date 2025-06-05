@@ -12,9 +12,11 @@ import {
   CreditCard,
   Settings,
   AlertCircle,
+  LogOut,
 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { authApi } from "@/app/services/api/auth"
 
 // 导入各个组件
 import Overview from "./components/Overview"
@@ -50,6 +52,15 @@ export default function TenantDashboard() {
     const role = localStorage.getItem("user_role") || "tenant"
     setUser((prev) => ({ ...prev, role }))
   }, [router])
+
+  const handleLogout = async () => {
+    try {
+      await authApi.logout()
+      router.push("/auth/login")
+    } catch (error) {
+      console.error("Logout failed:", error)
+    }
+  }
 
   const renderContent = () => {
     switch (activeTab) {
@@ -92,6 +103,10 @@ export default function TenantDashboard() {
                 设置
               </Button>
             </Link>
+            <Button variant="outline" size="sm" onClick={handleLogout}>
+              <LogOut className="h-4 w-4 mr-2" />
+              登出
+            </Button>
           </div>
         </div>
       </header>
