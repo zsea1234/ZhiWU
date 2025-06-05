@@ -79,13 +79,33 @@ export default function PropertiesPage() {
       setLoading(true)
       const token = localStorage.getItem('auth_token')
       const queryParams = new URLSearchParams()
+      
+      // 只添加非空和非默认值的筛选条件
       Object.entries(filters).forEach(([key, value]) => {
-        if (value) queryParams.append(key, value.toString())
+        // 对于数字类型的筛选条件，只有当值大于0时才添加
+        if (['min_rent', 'max_rent', 'min_area', 'max_area'].includes(key)) {
+          if (value > 0) {
+            // 转换参数名称以匹配后端API
+            let paramName = key
+            if (key === 'min_rent') paramName = 'min_price'
+            if (key === 'max_rent') paramName = 'max_price'
+            queryParams.append(paramName, value.toString())
+            console.log(`Adding numeric filter ${paramName}:`, value)
+          }
+        } else if (key === 'bedrooms' && value > 0) {
+          // 卧室数量作为独立参数
+          queryParams.append('bedrooms', value.toString())
+          console.log('Adding bedrooms filter:', value)
+        } else if (value && value !== '' && value !== 'ALL') {
+          queryParams.append(key, value.toString())
+          console.log(`Adding text filter ${key}:`, value)
+        }
       })
 
-      console.log('Fetching properties with params:', queryParams.toString())
+      const url = `http://localhost:5001/api/v1/properties/search?${queryParams}`
+      console.log('Fetching properties with URL:', url)
 
-      const response = await fetch(`http://localhost:5001/api/v1/properties/search?${queryParams}`, {
+      const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -102,7 +122,7 @@ export default function PropertiesPage() {
       console.log('API Response:', data)
       
       if (data.success && data.data && data.data.properties) {
-        console.log('Setting properties from response:', data.data.properties)
+        console.log('Filtered properties:', data.data.properties)
         setProperties(data.data.properties)
       } else {
         console.error('Unexpected data structure:', data)
@@ -122,7 +142,22 @@ export default function PropertiesPage() {
   }
 
   const handleSearch = () => {
+    console.log('Current filters before search:', filters)
     fetchProperties()
+  }
+
+  const handleFilterChange = (key: keyof SearchFilters, value: any) => {
+    console.log(`Updating filter ${key} from ${filters[key]} to:`, value)
+    // 对于数字类型的筛选条件，确保转换为数字
+    if (['min_rent', 'max_rent', 'min_area', 'max_area', 'bedrooms'].includes(key)) {
+      value = value === '0' || value === 0 ? 0 : Number(value)
+      console.log(`Converted ${key} to number:`, value)
+    }
+    setFilters(prev => {
+      const newFilters = { ...prev, [key]: value }
+      console.log('New filters state:', newFilters)
+      return newFilters
+    })
   }
 
   const handleBookViewing = async () => {
@@ -176,6 +211,8 @@ export default function PropertiesPage() {
       city: ''
     })
     setShowFilters(false)
+    // 重置后立即重新获取数据
+    fetchProperties()
   }
 
   return (
@@ -208,7 +245,7 @@ export default function PropertiesPage() {
                 <label className="text-sm font-medium">房屋类型</label>
                 <Select
                   value={filters.property_type}
-                  onValueChange={(value) => setFilters({...filters, property_type: value})}
+                  onValueChange={(value) => handleFilterChange('property_type', value)}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="选择房屋类型" />
@@ -227,7 +264,7 @@ export default function PropertiesPage() {
                 <label className="text-sm font-medium">城市</label>
                 <Select
                   value={filters.city}
-                  onValueChange={(value) => setFilters({...filters, city: value})}
+                  onValueChange={(value) => handleFilterChange('city', value)}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="选择城市" />
@@ -246,13 +283,13 @@ export default function PropertiesPage() {
                 <label className="text-sm font-medium">卧室数量</label>
                 <Select
                   value={filters.bedrooms.toString()}
-                  onValueChange={(value) => setFilters({...filters, bedrooms: parseInt(value)})}
+                  onValueChange={(value) => handleFilterChange('bedrooms', value)}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="选择卧室数量" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="622">不限</SelectItem>
+                    <SelectItem value="0">不限</SelectItem>
                     <SelectItem value="1">1室</SelectItem>
                     <SelectItem value="2">2室</SelectItem>
                     <SelectItem value="3">3室</SelectItem>

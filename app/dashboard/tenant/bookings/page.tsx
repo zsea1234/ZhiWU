@@ -55,6 +55,8 @@ export default function BookingsPage() {
     try {
       setLoading(true)
       const token = localStorage.getItem('auth_token')
+      console.log('开始获取预约列表，token:', token)
+      
       const response = await fetch('http://localhost:5001/api/v1/bookings/tenant', {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -62,16 +64,18 @@ export default function BookingsPage() {
         }
       })
       
+      console.log('API响应状态:', response.status)
+      
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
       
       const data = await response.json()
-      console.log('预约列表数据:', data)
+      console.log('API返回数据:', data)
       
       if (data.success && data.data && data.data.items) {
         const formattedBookings = data.data.items.map((booking: any) => {
-          console.log('单个预约数据:', booking)
+          console.log('处理单个预约数据:', booking)
           return {
             booking_id: booking.id || booking.booking_id,
             property_id: booking.property_id,
@@ -193,7 +197,7 @@ export default function BookingsPage() {
           {bookings.map((booking) => {
             console.log('渲染预约卡片，数据:', booking)
             return (
-              <Card key={booking.booking_id}>
+              <Card key={booking.booking_id} className="border border-gray-200">
                 <CardHeader>
                   <div className="flex justify-between items-start">
                     <div>
@@ -233,37 +237,40 @@ export default function BookingsPage() {
                       </div>
                     )}
 
-                    <div className="flex flex-col gap-4">
-                      <div className="text-sm text-gray-500">
-                        <p>房东：{booking.landlord?.username || '未知房东'}</p>
-                        <p>联系电话：{booking.landlord?.phone || '未知电话'}</p>
-                      </div>
-                      
-                      <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            console.log('点击查看详情按钮')
-                            setSelectedBooking(booking)
-                            setDetailDialogOpen(true)
-                          }}
-                        >
-                          <Eye className="w-4 h-4 mr-2" />
-                          查看详情
-                        </Button>
-                        <Button
-                          variant="destructive"
-                          size="sm"
+                    <div className="text-sm text-gray-500">
+                      <p>房东123：{booking.landlord?.username || '未知房东'}</p>
+                      <p>联系电话：{booking.landlord?.phone || '未知电话'}</p>
+                    </div>
+
+                    <Button>
+                    查看详情
+                    </Button>
+
+                    <div className="flex items-center gap-2">
+                      <button type="button"
+                        className="inline-flex items-center justify-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium ring-offset-background transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                        onClick={() => {
+                          console.log('点击查看详情按钮')
+                          setSelectedBooking(booking)
+                          setDetailDialogOpen(true)
+                        }}
+                      >
+                        <Eye className="h-4 w-4" />
+                        查看详情
+                      </button>
+
+                      {(booking.status === 'PENDING_CONFIRMATION' || booking.status === 'CONFIRMED_BY_LANDLORD') && (
+                        <button
+                          className="inline-flex items-center justify-center gap-2 rounded-md bg-destructive px-3 py-2 text-sm font-medium text-destructive-foreground transition-colors hover:bg-destructive/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                           onClick={() => {
                             console.log('点击取消预约按钮')
                             handleCancelBooking(booking.booking_id)
                           }}
                         >
-                          <X className="w-4 h-4 mr-2" />
+                          <X className="h-4 w-4" />
                           取消预约
-                        </Button>
-                      </div>
+                        </button>
+                      )}
                     </div>
                   </div>
                 </CardContent>

@@ -22,6 +22,7 @@ import {
   Clock,
   Settings,
   MapPin,
+  Eye,
 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -163,6 +164,8 @@ export default function TenantDashboard() {
     description: '',
     preferred_contact_time: ''
   })
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null)
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false)
 
   // 统计数据
   const stats = {
@@ -223,7 +226,12 @@ export default function TenantDashboard() {
       console.log('Bookings response data:', data)
       
       if (data.success && data.data && data.data.items) {
-        setBookings(data.data.items)
+        const formattedBookings = data.data.items.map((booking: any) => ({
+          ...booking,
+          status: booking.status.toUpperCase()
+        }))
+        console.log('Formatted bookings:', formattedBookings)
+        setBookings(formattedBookings)
       } else {
         console.error('Invalid data format:', data)
         setBookings([])
@@ -384,6 +392,11 @@ export default function TenantDashboard() {
     const statusInfo = statusMap[status] || { label: '未知状态', variant: 'secondary' }
     
     return <Badge variant={statusInfo.variant as any}>{statusInfo.label}</Badge>
+  }
+
+  const handleViewDetails = (booking: Booking) => {
+    // 跳转到房源详情页
+    router.push(`/dashboard/tenant/properties/${booking.property_id}`)
   }
 
   const handleCancelBooking = async (bookingId: number) => {
@@ -680,19 +693,27 @@ export default function TenantDashboard() {
 
                         <div className="flex justify-between items-center">
                           <div className="text-sm text-gray-500">
-                            房东：{booking.landlord?.username || '未知'}
-                            <br />
-                            联系电话：{booking.landlord?.phone || '未知'}
+                            <p>房东：{booking.landlord?.username || '未知房东'}</p>
+                            <p>联系电话：{booking.landlord?.phone || '未知电话'}</p>
                           </div>
-                          {(booking.status === 'PENDING_CONFIRMATION' || booking.status === 'CONFIRMED_BY_LANDLORD') && (
+                          <div className="flex gap-2">
                             <Button
-                              variant="destructive"
-                              onClick={() => handleCancelBooking(booking.booking_id)}
+                              variant="outline"
+                              onClick={() => handleViewDetails(booking)}
                             >
-                              <X className="w-4 h-4 mr-2" />
-                              取消预约
+                              <Eye className="w-4 h-4 mr-2" />
+                              查看房源
                             </Button>
-                          )}
+                            {(booking.status === 'PENDING_CONFIRMATION' || booking.status === 'CONFIRMED_BY_LANDLORD') && (
+                              <Button
+                                variant="destructive"
+                                onClick={() => handleCancelBooking(booking.booking_id)}
+                              >
+                                <X className="w-4 h-4 mr-2" />
+                                取消预约
+                              </Button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </CardContent>
@@ -940,6 +961,49 @@ export default function TenantDashboard() {
               className="w-full h-[600px] border"
             />
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 预约详情对话框 */}
+      <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>预约详情</DialogTitle>
+          </DialogHeader>
+          {selectedBooking && (
+            <div className="space-y-4">
+              <div>
+                <h3 className="font-medium">房源信息</h3>
+                <p className="text-sm text-gray-500">{selectedBooking.property?.title}</p>
+                <p className="text-sm text-gray-500">
+                  {selectedBooking.property?.address_line1}, {selectedBooking.property?.city}
+                </p>
+              </div>
+              <div>
+                <h3 className="font-medium">预约时间</h3>
+                <p className="text-sm text-gray-500">
+                  {new Date(selectedBooking.requested_datetime).toLocaleString()}
+                </p>
+              </div>
+              {selectedBooking.notes_for_landlord && (
+                <div>
+                  <h3 className="font-medium">给房东的留言</h3>
+                  <p className="text-sm text-gray-500">{selectedBooking.notes_for_landlord}</p>
+                </div>
+              )}
+              {selectedBooking.landlord_notes && (
+                <div>
+                  <h3 className="font-medium">房东回复</h3>
+                  <p className="text-sm text-gray-500">{selectedBooking.landlord_notes}</p>
+                </div>
+              )}
+              <div>
+                <h3 className="font-medium">房东信息</h3>
+                <p className="text-sm text-gray-500">姓名：{selectedBooking.landlord?.username || '未知房东'}</p>
+                <p className="text-sm text-gray-500">电话：{selectedBooking.landlord?.phone || '未知电话'}</p>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
