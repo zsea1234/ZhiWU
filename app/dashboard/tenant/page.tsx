@@ -20,7 +20,7 @@ import {
   Bell,
   CheckCircle,
   Clock,
-  Settings, // 添加这一行
+  Settings,
 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -161,37 +161,71 @@ export default function TenantDashboard() {
 
   // 统计数据
   const stats = {
-    totalBookings: bookings.length,
-    activeLeases: leases.filter(l => l.status === 'active').length,
-    pendingMaintenance: maintenanceRequests.filter(m => m.status === 'PENDING_ASSIGNMENT').length,
-    unreadMessages: 0 // 需要实现消息统计
+    totalBookings: Array.isArray(bookings) ? bookings.length : 0,
+    activeLeases: Array.isArray(leases) ? leases.filter(l => l.status === 'active').length : 0,
+    pendingMaintenance: Array.isArray(maintenanceRequests) ? maintenanceRequests.filter(m => m.status === 'PENDING_ASSIGNMENT').length : 0,
+    unreadMessages: 0
   }
 
   useEffect(() => {
-    // 从localStorage获取用户信息
-    const userInfo = localStorage.getItem('user_info')
-    if (userInfo) {
-      try {
-        const parsedUser = JSON.parse(userInfo)
-        setUser(parsedUser)
-        fetchBookings()
-        fetchLeases()
-        fetchMaintenanceRequests()
-      } catch (error) {
-        console.error('Error parsing user info:', error)
-        router.push('/auth/login')
-      }
-    } else {
-      router.push('/auth/login')
+    // 检查认证
+    const token = localStorage.getItem("auth_token")
+    if (!token) {
+      router.push("/auth/login")
+      return
     }
-  }, [])
+
+    // 获取用户信息
+    const userInfo = localStorage.getItem("user_info")
+    if (userInfo) {
+      setUser(JSON.parse(userInfo))
+    }
+
+    // 获取数据
+    fetchBookings()
+    fetchLeases()
+    fetchMaintenanceRequests()
+  }, [router])
 
   const fetchBookings = async () => {
     try {
-      setIsLoadingBookings(true)
-      const response = await fetch('/api/v1/bookings')
-      const data = await response.json()
-      setBookings(data.data)
+      const token = localStorage.getItem('auth_token')
+      if (!token) {
+        router.push('/auth/login')
+        return
+      }
+      const response = await fetch('http://localhost:5001/api/v1/bookings/tenant', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+      
+      if (!response.ok) {
+        if (response.status === 405) {
+          // 如果服务器不支持GET方法，尝试使用POST方法
+          const postResponse = await fetch('http://localhost:5001/api/v1/bookings', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          })
+          
+          if (!postResponse.ok) {
+            throw new Error(`HTTP error! status: ${postResponse.status}`)
+          }
+          
+          const data = await postResponse.json()
+          setBookings(data.data || [])
+        } else {
+          throw new Error(`HTTP error! status: ${response.status}`)
+        }
+      } else {
+        const data = await response.json()
+        setBookings(data.data || [])
+      }
     } catch (error) {
       console.error('Error fetching bookings:', error)
       toast({
@@ -199,17 +233,41 @@ export default function TenantDashboard() {
         description: "获取预约列表失败",
         variant: "destructive"
       })
-    } finally {
-      setIsLoadingBookings(false)
+      setBookings([]) // 设置空数组作为默认值
     }
   }
 
   const fetchLeases = async () => {
     try {
-      setIsLoadingLeases(true)
-      const response = await fetch('/api/v1/leases')
+      const token = localStorage.getItem('auth_token')
+      if (!token) {
+        router.push('/auth/login')
+        return
+      }
+  
+      const response = await fetch('http://localhost:5001/api/v1/leases', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+      
+      if (response.status === 401) {
+        localStorage.removeItem('auth_token')
+        localStorage.removeItem('user_info')
+        localStorage.removeItem('user_role')
+        router.push('/auth/login')
+        return
+      }
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      
       const data = await response.json()
-      setLeases(data.data)
+      // 确保使用正确的数据结构
+      setLeases(Array.isArray(data.data.items) ? data.data.items : [])
     } catch (error) {
       console.error('Error fetching leases:', error)
       toast({
@@ -217,24 +275,87 @@ export default function TenantDashboard() {
         description: "获取租赁合同列表失败",
         variant: "destructive"
       })
-    } finally {
-      setIsLoadingLeases(false)
+      setLeases([])
     }
   }
 
   const fetchMaintenanceRequests = async () => {
     try {
-      setIsLoadingMaintenance(true)
-      const response = await fetch('/api/v1/maintenance-requests')
+      const token = localStorage.getItem('auth_token')
+      if (!token) {
+        router.push('/auth/login')
+        return
+      }
+  
+      // 获取用户角色
+      const userRole = localStorage.getItem('user_role')
+      if (!userRole || userRole.toLowerCase() !== 'tenant') {
+        console.error('Invalid user role:', userRole)
+        toast({
+          title: "错误",
+          description: "用户角色无效",
+          variant: "destructive"
+        })
+        return
+      }
+  
+      console.log('Fetching maintenance requests with token:', token)
+      console.log('User role:', userRole)
+  
+      const response = await fetch('http://localhost:5001/api/v1/maintenance-requests', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+      
+      // 打印响应状态和头信息
+      console.log('Response status:', response.status)
+      console.log('Response headers:', Object.fromEntries(response.headers.entries()))
+      
+      if (response.status === 401) {
+        localStorage.removeItem('auth_token')
+        localStorage.removeItem('user_info')
+        localStorage.removeItem('user_role')
+        router.push('/auth/login')
+        return
+      }
+      
+      if (!response.ok) {
+        // 尝试读取错误信息
+        const errorData = await response.json().catch(() => null)
+        console.error('Error response:', errorData)
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorData?.message || 'Unknown error'}`)
+      }
+      
       const data = await response.json()
-      setMaintenanceRequests(data.data)
+      console.log('Response data:', data)
+      
+      // 更安全的数据结构处理
+      if (data.data) {
+        if (Array.isArray(data.data)) {
+          // 如果直接是数组
+          setMaintenanceRequests(data.data)
+        } else if (data.data.items && Array.isArray(data.data.items)) {
+          // 如果是分页数据结构
+          setMaintenanceRequests(data.data.items)
+        } else {
+          console.error('Unexpected data structure:', data)
+          setMaintenanceRequests([])
+        }
+      } else {
+        console.error('No data in response:', data)
+        setMaintenanceRequests([])
+      }
     } catch (error) {
       console.error('Error fetching maintenance requests:', error)
       toast({
         title: "错误",
-        description: "获取维修申请列表失败",
+        description: error instanceof Error ? error.message : "获取维修请求列表失败",
         variant: "destructive"
       })
+      setMaintenanceRequests([])
     } finally {
       setIsLoadingMaintenance(false)
     }
@@ -242,15 +363,22 @@ export default function TenantDashboard() {
 
   const handleCancelBooking = async (bookingId: number) => {
     try {
-      await fetch(`/api/v1/bookings/${bookingId}`, {
+      const token = localStorage.getItem('auth_token')
+      const response = await fetch(`http://localhost:5001/api/v1/bookings/${bookingId}/cancel`, {
         method: 'PUT',
         headers: {
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           status: 'CANCELLED_BY_TENANT'
         })
       })
+
+      if (!response.ok) {
+        throw new Error('取消预约失败')
+      }
+
       toast({
         title: "成功",
         description: "预约已取消"
@@ -291,15 +419,22 @@ export default function TenantDashboard() {
 
   const handleSignLease = async (leaseId: number) => {
     try {
-      await fetch(`/api/v1/leases/${leaseId}/sign`, {
+      const token = localStorage.getItem('auth_token')
+      const response = await fetch(`http://localhost:5001/api/v1/leases/${leaseId}/sign`, {
         method: 'POST',
         headers: {
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           signature_data: 'UserConfirmedAgreement_Timestamp'
         })
       })
+
+      if (!response.ok) {
+        throw new Error('签署合同失败')
+      }
+
       toast({
         title: "成功",
         description: "合同已签署"
@@ -317,13 +452,20 @@ export default function TenantDashboard() {
 
   const handleSubmitMaintenanceRequest = async () => {
     try {
-      await fetch('/api/v1/maintenance-requests', {
+      const token = localStorage.getItem('auth_token')
+      const response = await fetch('http://localhost:5001/api/v1/maintenance-requests', {
         method: 'POST',
         headers: {
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(newMaintenanceRequest)
       })
+
+      if (!response.ok) {
+        throw new Error('提交维修申请失败')
+      }
+
       toast({
         title: "成功",
         description: "维修申请已提交"
@@ -453,9 +595,11 @@ export default function TenantDashboard() {
           </TabsList>
 
           <TabsContent value="properties" className="space-y-4">
-            {/* 房源浏览内容 */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {/* 这里添加房源列表 */}
+            <div className="flex justify-center items-center min-h-[400px]">
+              <Button onClick={() => router.push('/dashboard/tenant/properties')}>
+                <Home className="w-4 h-4 mr-2" />
+                浏览房源
+              </Button>
             </div>
           </TabsContent>
 

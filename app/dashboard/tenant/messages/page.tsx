@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Loader2, Send, AlertCircle } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
+import { useRouter } from "next/navigation"
 
 interface Message {
   id: number
@@ -32,6 +33,7 @@ interface Chat {
 }
 
 export default function MessagesPage() {
+  const router = useRouter()
   const { toast } = useToast()
   const [chats, setChats] = useState<Chat[]>([])
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null)
@@ -41,8 +43,14 @@ export default function MessagesPage() {
   const [loadingMessages, setLoadingMessages] = useState(false)
 
   useEffect(() => {
+    // 检查认证
+    const token = localStorage.getItem("auth_token")
+    if (!token) {
+      router.push("/auth/login")
+      return
+    }
     fetchChats()
-  }, [])
+  }, [router])
 
   useEffect(() => {
     if (selectedChat) {
@@ -53,9 +61,20 @@ export default function MessagesPage() {
   const fetchChats = async () => {
     try {
       setLoading(true)
-      const response = await fetch('/api/v1/messages/chats')
+      const token = localStorage.getItem('auth_token')
+      const response = await fetch('http://localhost:5001/api/v1/messages/chats', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      
       const data = await response.json()
-      setChats(data.data)
+      setChats(data.data || [])
     } catch (error) {
       console.error('Error fetching chats:', error)
       toast({
@@ -71,9 +90,20 @@ export default function MessagesPage() {
   const fetchMessages = async (userId: number) => {
     try {
       setLoadingMessages(true)
-      const response = await fetch(`/api/v1/messages?chat_with_user_id=${userId}`)
+      const token = localStorage.getItem('auth_token')
+      const response = await fetch(`http://localhost:5001/api/v1/messages?chat_with_user_id=${userId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      
       const data = await response.json()
-      setMessages(data.data)
+      setMessages(data.data || [])
     } catch (error) {
       console.error('Error fetching messages:', error)
       toast({
@@ -90,9 +120,11 @@ export default function MessagesPage() {
     if (!selectedChat || !messageInput.trim()) return
 
     try {
-      const response = await fetch('/api/v1/messages', {
+      const token = localStorage.getItem('auth_token')
+      const response = await fetch('http://localhost:5001/api/v1/messages', {
         method: 'POST',
         headers: {
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
@@ -101,12 +133,12 @@ export default function MessagesPage() {
         })
       })
 
-      if (response.ok) {
-        setMessageInput("")
-        fetchMessages(selectedChat.user_id)
-      } else {
+      if (!response.ok) {
         throw new Error('发送消息失败')
       }
+
+      setMessageInput("")
+      fetchMessages(selectedChat.user_id)
     } catch (error) {
       console.error('Error sending message:', error)
       toast({

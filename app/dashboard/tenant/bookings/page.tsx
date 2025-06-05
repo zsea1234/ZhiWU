@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, Calendar, MapPin, X } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
+import { useRouter } from "next/navigation"
 
 interface Booking {
   booking_id: number
@@ -34,19 +35,37 @@ interface Booking {
 
 export default function BookingsPage() {
   const { toast } = useToast()
+  const router = useRouter()
   const [bookings, setBookings] = useState<Booking[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    // 检查认证
+    const token = localStorage.getItem("auth_token")
+    if (!token) {
+      router.push("/auth/login")
+      return
+    }
     fetchBookings()
-  }, [])
+  }, [router])
 
   const fetchBookings = async () => {
     try {
       setLoading(true)
-      const response = await fetch('/api/v1/bookings')
+      const token = localStorage.getItem('auth_token')
+      const response = await fetch('http://localhost:5001/api/v1/bookings/tenant', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      
       const data = await response.json()
-      setBookings(data.data)
+      setBookings(data.data || [])
     } catch (error) {
       console.error('Error fetching bookings:', error)
       toast({
@@ -61,9 +80,11 @@ export default function BookingsPage() {
 
   const handleCancelBooking = async (bookingId: number) => {
     try {
-      const response = await fetch(`/api/v1/bookings/${bookingId}`, {
+      const token = localStorage.getItem('auth_token')
+      const response = await fetch(`http://localhost:5001/api/v1/bookings/${bookingId}/cancel`, {
         method: 'PUT',
         headers: {
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
@@ -71,15 +92,15 @@ export default function BookingsPage() {
         })
       })
 
-      if (response.ok) {
-        toast({
-          title: "成功",
-          description: "预约已取消"
-        })
-        fetchBookings()
-      } else {
+      if (!response.ok) {
         throw new Error('取消预约失败')
       }
+
+      toast({
+        title: "成功",
+        description: "预约已取消"
+      })
+      fetchBookings()
     } catch (error) {
       console.error('Error cancelling booking:', error)
       toast({

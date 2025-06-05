@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Loader2, Plus, Wrench, AlertCircle } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
+import { useRouter } from "next/navigation"
 
 interface MaintenanceRequest {
   id: number
@@ -33,6 +34,7 @@ interface MaintenanceRequest {
 
 export default function MaintenancePage() {
   const { toast } = useToast()
+  const router = useRouter()
   const [requests, setRequests] = useState<MaintenanceRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [newRequestDialogOpen, setNewRequestDialogOpen] = useState(false)
@@ -43,15 +45,32 @@ export default function MaintenancePage() {
   })
 
   useEffect(() => {
+    // 检查认证
+    const token = localStorage.getItem("auth_token")
+    if (!token) {
+      router.push("/auth/login")
+      return
+    }
     fetchRequests()
-  }, [])
+  }, [router])
 
   const fetchRequests = async () => {
     try {
       setLoading(true)
-      const response = await fetch('/api/v1/maintenance-requests')
+      const token = localStorage.getItem('auth_token')
+      const response = await fetch('http://localhost:5001/api/v1/maintenance-requests', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      
       const data = await response.json()
-      setRequests(data.data)
+      setRequests(data.data || [])
     } catch (error) {
       console.error('Error fetching maintenance requests:', error)
       toast({
@@ -66,24 +85,26 @@ export default function MaintenancePage() {
 
   const handleSubmitRequest = async () => {
     try {
-      const response = await fetch('/api/v1/maintenance-requests', {
+      const token = localStorage.getItem('auth_token')
+      const response = await fetch('http://localhost:5001/api/v1/maintenance-requests', {
         method: 'POST',
         headers: {
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(newRequest)
       })
 
-      if (response.ok) {
-        toast({
-          title: "成功",
-          description: "维修申请已提交"
-        })
-        setNewRequestDialogOpen(false)
-        fetchRequests()
-      } else {
+      if (!response.ok) {
         throw new Error('提交维修申请失败')
       }
+
+      toast({
+        title: "成功",
+        description: "维修申请已提交"
+      })
+      setNewRequestDialogOpen(false)
+      fetchRequests()
     } catch (error) {
       console.error('Error submitting maintenance request:', error)
       toast({
@@ -96,9 +117,11 @@ export default function MaintenancePage() {
 
   const handleCancelRequest = async (requestId: number) => {
     try {
-      const response = await fetch(`/api/v1/maintenance-requests/${requestId}`, {
+      const token = localStorage.getItem('auth_token')
+      const response = await fetch(`http://localhost:5001/api/v1/maintenance-requests/${requestId}`, {
         method: 'PUT',
         headers: {
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
@@ -106,15 +129,15 @@ export default function MaintenancePage() {
         })
       })
 
-      if (response.ok) {
-        toast({
-          title: "成功",
-          description: "维修申请已取消"
-        })
-        fetchRequests()
-      } else {
+      if (!response.ok) {
         throw new Error('取消维修申请失败')
       }
+
+      toast({
+        title: "成功",
+        description: "维修申请已取消"
+      })
+      fetchRequests()
     } catch (error) {
       console.error('Error cancelling maintenance request:', error)
       toast({

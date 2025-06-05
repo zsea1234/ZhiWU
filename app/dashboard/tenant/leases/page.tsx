@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Loader2, FileText, Download, AlertCircle } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
+import { useRouter } from "next/navigation" 
 
 interface Lease {
   id: number
@@ -48,21 +49,39 @@ interface Lease {
 
 export default function LeasesPage() {
   const { toast } = useToast()
+  const router = useRouter()
   const [leases, setLeases] = useState<Lease[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedLease, setSelectedLease] = useState<Lease | null>(null)
   const [contractPreviewOpen, setContractPreviewOpen] = useState(false)
 
-  useEffect(() => {
+   useEffect(() => {
+    // 检查认证
+    const token = localStorage.getItem("auth_token")
+    if (!token) {
+      router.push("/auth/login")
+      return
+    }
     fetchLeases()
-  }, [])
+  }, [router])
 
   const fetchLeases = async () => {
     try {
       setLoading(true)
-      const response = await fetch('/api/v1/leases')
+      const token = localStorage.getItem('auth_token')
+      const response = await fetch('http://localhost:5001/api/v1/leases', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      
       const data = await response.json()
-      setLeases(data.data)
+      setLeases(Array.isArray(data.data) ? data.data : []);
     } catch (error) {
       console.error('Error fetching leases:', error)
       toast({
@@ -77,9 +96,11 @@ export default function LeasesPage() {
 
   const handleSignLease = async (leaseId: number) => {
     try {
-      const response = await fetch(`/api/v1/leases/${leaseId}/sign`, {
+      const token = localStorage.getItem('auth_token')
+      const response = await fetch(`http://localhost:5001/api/v1/leases/${leaseId}/sign`, {
         method: 'POST',
         headers: {
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
@@ -87,15 +108,15 @@ export default function LeasesPage() {
         })
       })
 
-      if (response.ok) {
-        toast({
-          title: "成功",
-          description: "合同已签署"
-        })
-        fetchLeases()
-      } else {
+      if (!response.ok) {
         throw new Error('签署合同失败')
       }
+
+      toast({
+        title: "成功",
+        description: "合同已签署"
+      })
+      fetchLeases()
     } catch (error) {
       console.error('Error signing lease:', error)
       toast({
