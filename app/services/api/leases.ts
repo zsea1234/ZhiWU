@@ -9,7 +9,7 @@ export interface LeaseType {
   landlord_id: number
   start_date: string
   end_date: string
-  status: 'active' | 'expired' | 'terminated'
+  status: 'draft' | 'pending_tenant_signature' | 'pending_landlord_signature' | 'active' | 'expired' | 'terminated_early' | 'payment_due'
   rent_amount: number
   deposit_amount: number
   payment_frequency: 'monthly' | 'quarterly' | 'yearly'

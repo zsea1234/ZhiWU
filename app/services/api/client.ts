@@ -12,12 +12,14 @@ class ApiError extends Error {
 }
 
 async function handleResponse(response: Response) {
+  console.log('API响应状态:', response.status)
   const data = await response.json()
+  console.log('API响应数据:', data)
 
   if (!response.ok) {
     throw new ApiError(
       response.status,
-      data.message || 'An error occurred',
+      data.message || 'Something went wrong',
       data
     )
   }
@@ -30,26 +32,37 @@ export async function apiClient<T>(
   { body, ...customConfig }: RequestInit = {}
 ): Promise<T> {
   const token = getAuthToken()
+  console.log('API请求端点:', endpoint)
+  console.log('认证token:', token ? '存在' : '不存在')
+
   const headers = {
     ...API_CONFIG.headers,
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...customConfig.headers,
   }
+  console.log('请求头:', headers)
 
   const config: RequestInit = {
     method: body ? 'POST' : 'GET',
     ...customConfig,
     headers,
+    mode: 'cors',
   }
 
   if (body) {
     config.body = JSON.stringify(body)
+    console.log('请求体:', body)
   }
 
   try {
-    const response = await fetch(`${API_CONFIG.baseURL}${endpoint}`, config)
+    const url = `${API_CONFIG.baseURL}${endpoint}`
+    console.log('完整请求URL:', url)
+    console.log('请求配置:', config)
+
+    const response = await fetch(url, config)
     return handleResponse(response)
   } catch (error) {
+    console.error('API请求错误:', error)
     if (error instanceof ApiError) {
       throw error
     }
