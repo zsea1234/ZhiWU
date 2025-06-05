@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -21,6 +21,8 @@ import {
   Trash2,
   AlertTriangle,
   Loader2,
+  Wrench,
+  Check,
 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -31,14 +33,23 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import type { Property } from '../../types/property'
 import { propertyApi } from '../../services/api/properties'
 import { useToast } from "@/components/ui/use-toast"
+import { maintenanceApi, MaintenanceType } from "@/app/services/api/maintenance"
 
 interface Message {
   id: number
-  sender: string
+  sender_id: number
+  receiver_id: number
   content: string
-  time: string
-  unread?: boolean
-  isTenant?: boolean
+  sent_at: string
+  is_read_by_receiver: boolean
+  sender?: {
+    id: number
+    username: string
+  }
+  receiver?: {
+    id: number
+    username: string
+  }
 }
 
 interface Booking {
@@ -190,6 +201,13 @@ export default function LandlordDashboard() {
     payment_due_day_of_month: 1,
     status: 'draft' as 'draft' | 'pending_tenant_signature' | 'pending_landlord_signature' | 'active' | 'expired' | 'terminated_early' | 'payment_due'
   });
+  const [requests, setRequests] = useState<MaintenanceType[]>([])
+  const [maintenanceLoading, setMaintenanceLoading] = useState(true)
+  const [totalPages, setTotalPages] = useState(1)
+  const [messages, setMessages] = useState<Message[]>([])
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [selectedChatUserId, setSelectedChatUserId] = useState<number | null>(null)
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false)
 
   useEffect(() => {
     // 从localStorage获取用户信息
@@ -209,10 +227,10 @@ export default function LandlordDashboard() {
 
   useEffect(() => {
     if (user?.id) {
-      console.log('User ID available, fetching properties for user:', user.id)
-      fetchProperties()
-    } else {
-      console.log('User ID not available, skipping fetchProperties')
+      fetchProperties();
+      fetchPendingBookings();
+      fetchMaintenanceRequests();
+      fetchUnreadCount();
     }
   }, [user?.id])
 
@@ -440,6 +458,15 @@ export default function LandlordDashboard() {
     } else if (value === 'leases') {
       console.log('Fetching leases...');
       fetchLeases();
+    } else if (value === 'maintenance') {
+      console.log('Fetching maintenance requests...');
+      fetchMaintenanceRequests();
+    } else if (value === 'messages') {
+      console.log('Fetching messages...');
+      // 获取未读消息数
+      fetchUnreadCount();
+      // 获取所有消息
+      fetchAllMessages();
     }
   }
 
@@ -793,6 +820,370 @@ export default function LandlordDashboard() {
     }
   };
 
+  const fetchMaintenanceRequests = async () => {
+    console.log('=== 开始获取维修请求列表 ===');
+    try {
+      setMaintenanceLoading(true)
+      
+      // 作为房东，我们只需要获取维修请求列表
+      const response = await maintenanceApi.list({
+        page: 1,
+        page_size: 10
+      })
+      
+      console.log('API响应:', response);
+      
+      // 检查响应格式
+      if (!response?.data?.items) {
+        console.error('API响应格式不正确:', response);
+        throw new Error('获取维修请求列表失败')
+      }
+
+      // 设置维修请求列表
+      setRequests(response.data.items)
+      
+      // 显示成功消息
+      toast({
+        title: "Success",
+        description: `获取到 ${response.data.items.length} 条维修请求`
+      })
+
+    } catch (error) {
+      console.error('获取维修请求列表失败:', error);
+      setRequests([])
+      toast({
+        title: "Error",
+        description: "获取维修请求列表失败，请稍后重试",
+        variant: "destructive"
+      })
+    } finally {
+      setMaintenanceLoading(false)
+      console.log('=== 完成获取维修请求列表 ===');
+    }
+  }
+
+  const handleRequestStatusChange = async (id: number, newStatus: MaintenanceType['status']) => {
+    try {
+      // 根据不同的状态执行不同的操作
+      const updateData = {
+        status: newStatus,
+        ...(newStatus === 'assigned_to_worker' && {
+          assigned_worker_name: '维修工人',
+          worker_contact_info: '13800138000'
+        }),
+        ...(newStatus === 'completed' && {
+          resolution_notes: '维修已完成'
+        }),
+        ...(newStatus === 'closed_by_landlord' && {
+          resolution_notes: '维修请求已关闭'
+        })
+      }
+
+      // 发送更新请求
+      const response = await maintenanceApi.update(id, updateData)
+      
+      // 更新本地状态
+      setRequests((prevRequests: MaintenanceType[]) => 
+        prevRequests.map((request: MaintenanceType) => 
+          request.id === id ? {
+            ...request,
+            ...updateData,  // 使用更新数据更新状态
+            property_summary: request.property_summary,  // 保留原有的房产信息
+            tenant_info: request.tenant_info  // 保留原有的租客信息
+          } : request
+        )
+      )
+      
+      // 显示成功消息
+      toast({
+        title: "Success",
+        description: "维修请求状态更新成功"
+      })
+
+      // 重新获取维修请求列表以确保数据同步
+      await fetchMaintenanceRequests()
+    } catch (error) {
+      console.error('更新维修请求状态失败:', error)
+      toast({
+        title: "Error",
+        description: "更新维修请求状态失败",
+        variant: "destructive"
+      })
+    }
+  }
+
+  const getStatusBadge = (status: string) => {
+    const variants = {
+      pending_assignment: "secondary",
+      assigned_to_worker: "default",
+      in_progress: "default",
+      completed: "secondary",
+      cancelled_by_tenant: "destructive",
+      closed_by_landlord: "secondary",
+    } as const
+
+    const labels = {
+      pending_assignment: "待分配",
+      assigned_to_worker: "已分配",
+      in_progress: "处理中",
+      completed: "已完成",
+      cancelled_by_tenant: "已取消",
+      closed_by_landlord: "已关闭",
+    }
+
+    return (
+      <Badge 
+        variant={variants[status as keyof typeof variants] || "secondary"}
+        className="px-3 py-1 text-sm font-medium"
+      >
+        {labels[status as keyof typeof labels] || status}
+      </Badge>
+    )
+  }
+
+  // 获取未读消息数
+  const fetchUnreadCount = async () => {
+    console.log('=== 开始获取未读消息数 ===');
+    try {
+      console.log('发送请求到:', 'http://localhost:5001/api/v1/messages/unread-count');
+      const response = await fetch('http://localhost:5001/api/v1/messages/unread-count', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+        }
+      });
+      
+      console.log('响应状态:', response.status);
+      if (!response.ok) {
+        throw new Error('获取未读消息数失败');
+      }
+      
+      const data = await response.json();
+      console.log('获取到的未读消息数:', data);
+      setUnreadCount(data.data.unread_count);
+    } catch (error) {
+      console.error('获取未读消息数失败:', error);
+      toast({
+        title: "Error",
+        description: "获取未读消息数失败",
+        variant: "destructive"
+      });
+    }
+    console.log('=== 完成获取未读消息数 ===');
+  };
+
+  // 获取对话历史
+  const fetchMessages = async (userId: number) => {
+    console.log('=== 开始获取消息历史 ===');
+    console.log('目标用户ID:', userId);
+    setIsLoadingMessages(true);
+    try {
+      const url = `http://localhost:5001/api/v1/messages?chat_with_user_id=${userId}`;
+      console.log('发送请求到:', url);
+      console.log('请求头:', {
+        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+      });
+      
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+        }
+      });
+      
+      console.log('响应状态:', response.status);
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('错误响应:', errorData);
+        throw new Error(`获取消息历史失败: ${errorData.message || '未知错误'}`);
+      }
+      
+      const data = await response.json();
+      console.log('获取到的消息列表:', data);
+      
+      if (data.data) {
+        setMessages(data.data);
+      } else {
+        setMessages([]);
+      }
+    } catch (error) {
+      console.error('获取消息历史失败:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "获取消息历史失败",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoadingMessages(false);
+    }
+    console.log('=== 完成获取消息历史 ===');
+  };
+
+  // 发送消息
+  const sendMessage = async () => {
+    console.log('=== 开始发送消息 ===');
+    if (!messageInput.trim() || !selectedChatUserId) {
+      console.log('消息为空或未选择接收者，取消发送');
+      return;
+    }
+
+    console.log('发送消息到用户:', selectedChatUserId);
+    console.log('消息内容:', messageInput.trim());
+
+    try {
+      const requestBody = {
+        receiver_id: selectedChatUserId,
+        content: messageInput.trim()
+      };
+      console.log('请求体:', requestBody);
+
+      const response = await fetch('http://localhost:5001/api/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+        },
+        body: JSON.stringify(requestBody)
+      });
+      
+      console.log('响应状态:', response.status);
+      if (!response.ok) {
+        throw new Error('发送消息失败');
+      }
+      
+      const data = await response.json();
+      console.log('发送成功，返回数据:', data);
+      setMessages(prev => [data.data, ...prev]);
+      setMessageInput("");
+      
+      // 刷新未读消息数
+      console.log('刷新未读消息数...');
+      await fetchUnreadCount();
+    } catch (error) {
+      console.error('发送消息失败:', error);
+      toast({
+        title: "Error",
+        description: "发送消息失败",
+        variant: "destructive"
+      });
+    }
+    console.log('=== 完成发送消息 ===');
+  };
+
+  // 在组件加载时获取未读消息数
+  useEffect(() => {
+    console.log('=== 组件加载 ===');
+    if (user?.id) {
+      console.log('当前用户ID:', user.id);
+      fetchUnreadCount();
+    } else {
+      console.log('未检测到用户信息');
+    }
+  }, [user?.id]);
+
+  // 在消息列表渲染时添加调试信息
+  const renderMessages = () => {
+    console.log('=== 渲染消息列表 ===');
+    console.log('当前消息列表:', messages);
+    console.log('选中的聊天用户ID:', selectedChatUserId);
+    console.log('未读消息数:', unreadCount);
+    
+    return messages
+      .filter(message => 
+        (message.sender_id === user?.id && message.receiver_id === selectedChatUserId) ||
+        (message.sender_id === selectedChatUserId && message.receiver_id === user?.id)
+      )
+      .map((message) => {
+        console.log('渲染消息:', message);
+        return (
+          <div
+            key={message.id}
+            className={`flex ${message.sender_id === user?.id ? "justify-end" : "justify-start"}`}
+          >
+            <div
+              className={`max-w-[70%] p-3 rounded-lg ${
+                message.sender_id === user?.id
+                  ? "bg-blue-100"
+                  : "bg-gray-100"
+              }`}
+            >
+              <p className="font-medium">{message.sender?.username || '未知用户'}</p>
+              <p className="text-sm">{message.content}</p>
+              <p className="text-xs text-gray-500 mt-1">
+                {new Date(message.sent_at).toLocaleString()}
+              </p>
+            </div>
+          </div>
+        );
+      });
+  };
+
+  // 获取所有消息
+  const fetchAllMessages = async () => {
+    console.log('=== 开始获取所有消息 ===');
+    try {
+      // 获取所有租约信息
+      const leasesUrl = 'http://localhost:5001/api/v1/leases';
+      console.log('获取租约列表，发送请求到:', leasesUrl);
+      
+      const leasesResponse = await fetch(leasesUrl, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+        }
+      });
+      
+      console.log('租约列表响应状态:', leasesResponse.status);
+      if (!leasesResponse.ok) {
+        throw new Error('获取租约列表失败');
+      }
+      
+      const leasesData = await leasesResponse.json();
+      console.log('获取到的租约列表:', leasesData);
+      
+      if (leasesData.data && leasesData.data.length > 0) {
+        // 使用第一个租约的租客作为默认对话用户
+        const firstLease = leasesData.data[0];
+        console.log('选择第一个租约的租客作为对话用户:', firstLease.tenant_info);
+        setSelectedChatUserId(firstLease.tenant_info.id);
+        
+        // 获取与该租客的对话历史
+        const messagesUrl = `http://localhost:5001/api/v1/messages?chat_with_user_id=${firstLease.tenant_info.id}`;
+        console.log('获取消息历史，发送请求到:', messagesUrl);
+        
+        const messagesResponse = await fetch(messagesUrl, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+          }
+        });
+        
+        console.log('消息历史响应状态:', messagesResponse.status);
+        if (!messagesResponse.ok) {
+          const errorData = await messagesResponse.json();
+          console.error('错误响应:', errorData);
+          throw new Error(`获取消息历史失败: ${errorData.message || '未知错误'}`);
+        }
+        
+        const messagesData = await messagesResponse.json();
+        console.log('获取到的消息列表:', messagesData);
+        
+        if (messagesData.data) {
+          setMessages(messagesData.data);
+        } else {
+          setMessages([]);
+        }
+      } else {
+        console.log('没有找到租约');
+        setMessages([]);
+      }
+    } catch (error) {
+      console.error('获取消息列表失败:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "获取消息列表失败",
+        variant: "destructive"
+      });
+    }
+    console.log('=== 完成获取所有消息 ===');
+  };
+
   if (!user) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -873,7 +1264,7 @@ export default function LandlordDashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">待处理</p>
-                  <p className="text-2xl font-bold text-orange-600">{properties.filter(p => p.status === 'vacant').length}</p>
+                  <p className="text-2xl font-bold text-orange-600">{pendingBookings.length + requests.filter(request => request.status !== 'completed').length}</p>
                 </div>
                 <AlertCircle className="h-8 w-8 text-orange-600" />
               </div>
@@ -888,7 +1279,6 @@ export default function LandlordDashboard() {
             <TabsTrigger value="properties">房源管理</TabsTrigger>
             <TabsTrigger value="bookings">预约管理</TabsTrigger>
             <TabsTrigger value="leases">租约管理</TabsTrigger>
-            <TabsTrigger value="income">收入统计</TabsTrigger>
             <TabsTrigger value="maintenance">维修管理</TabsTrigger>
             <TabsTrigger value="messages">消息中心</TabsTrigger>
           </TabsList>
@@ -936,23 +1326,32 @@ export default function LandlordDashboard() {
 
               <Card>
                 <CardHeader>
-                  <CardTitle>待处理事项</CardTitle>
+                  <CardTitle>待处理事项 <span className="ml-2 text-orange-600">{pendingBookings.length + requests.filter(request => request.status !== 'completed').length}</span></CardTitle>
                   <CardDescription>需要您关注的事项</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
-                    {[
-                      { type: "预约", content: "张三预约看房 - 明天下午2点", urgent: true },
-                      { type: "维修", content: "李四申请维修卫生间水龙头", urgent: false },
-                      { type: "合同", content: "王五的租约即将到期", urgent: true },
-                    ].map((item, i) => (
-                      <div key={i} className="flex items-start space-x-3">
-                        <Badge variant={item.urgent ? "destructive" : "secondary"} className="mt-1">
-                          {item.type}
-                        </Badge>
-                        <p className="text-sm flex-1">{item.content}</p>
-                      </div>
-                    ))}
+                    <>
+                      {[
+                        ...pendingBookings.map(booking => ({
+                          type: "预约",
+                          content: `${booking.landlord?.username || '未知租客'} 预约看房 - ${new Date(booking.requested_datetime).toLocaleString()}`,
+                          urgent: booking.status === 'PENDING_CONFIRMATION'
+                        })),
+                        ...requests.filter(request => request.status !== 'completed').map(request => ({
+                          type: "维修",
+                          content: `${request.tenant_info?.username || '未知租客'} 申请维修: ${request.description}`,
+                          urgent: request.status === 'pending_assignment'
+                        }))
+                      ].map((item, i) => (
+                        <div key={i} className="flex items-start space-x-3">
+                          <Badge variant={item.urgent ? "destructive" : "secondary"} className="mt-1">
+                            {item.type}
+                          </Badge>
+                          <p className="text-sm flex-1">{item.content}</p>
+                        </div>
+                      ))}
+                    </>
                   </div>
                 </CardContent>
               </Card>
@@ -1146,7 +1545,7 @@ export default function LandlordDashboard() {
               <Card>
                 <CardHeader>
                   <CardTitle>当前租约</CardTitle>
-                  <CardDescription>正在进行的租约</CardDescription>
+                  <CardDescription>待房东签署的合同</CardDescription>
                 </CardHeader>
                 <CardContent>
                   {isLoadingLeases ? (
@@ -1154,17 +1553,17 @@ export default function LandlordDashboard() {
                       <Loader2 className="h-6 w-6 animate-spin" />
                       <span className="ml-2">加载中...</span>
                     </div>
-                  ) : leases.length === 0 ? (
+                  ) : leases.filter(lease => lease.status === 'pending_landlord_signature').length === 0 ? (
                     <div className="text-center py-8">
                       <div className="mb-4">
                         <AlertCircle className="h-12 w-12 text-gray-400 mx-auto" />
                       </div>
-                      <h3 className="text-lg font-medium text-gray-900 mb-2">暂无租约</h3>
-                      <p className="text-gray-500">当有新的租约时，将显示在这里</p>
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">暂无待签署合同</h3>
+                      <p className="text-gray-500">当有新的待签署合同时，将显示在这里</p>
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      {leases.map((lease) => (
+                      {leases.filter(lease => lease.status === 'pending_landlord_signature').map((lease) => (
                         <div key={lease.id} className="border-b pb-4 last:border-0">
                           <div className="flex justify-between items-start">
                             <div>
@@ -1174,31 +1573,13 @@ export default function LandlordDashboard() {
                                 租期：{new Date(lease.start_date).toLocaleDateString()} 至 {new Date(lease.end_date).toLocaleDateString()}
                               </p>
                               <p className="text-sm text-gray-500">
-                                状态：{
-                                  lease.status === 'draft' ? '草稿' :
-                                  lease.status === 'pending_tenant_signature' ? '待租客签署' :
-                                  lease.status === 'pending_landlord_signature' ? '待房东签署' :
-                                  lease.status === 'active' ? '生效中' :
-                                  lease.status === 'expired' ? '已过期' :
-                                  lease.status === 'terminated_early' ? '提前终止' :
-                                  lease.status === 'payment_due' ? '待付款' : '未知状态'
-                                }
+                                状态：待房东签署
                               </p>
                             </div>
                             <div className="flex flex-col items-end gap-2">
                               <p className="font-medium text-green-600">¥{parseFloat(lease.monthly_rent_amount).toLocaleString()}/月</p>
                               <div className="flex gap-2">
-                                {lease.status === 'draft' && (
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => handleViewContract(lease)}
-                                  >
-                                    <FileText className="h-4 w-4 mr-2" />
-                                    编辑合同
-                                  </Button>
-                                )}
-                                {lease.status === 'pending_landlord_signature' && !lease.landlord_signed_at && (
+                                {!lease.landlord_signed_at && (
                                   <Button
                                     variant="default"
                                     size="sm"
@@ -1206,26 +1587,6 @@ export default function LandlordDashboard() {
                                   >
                                     <FileText className="h-4 w-4 mr-2" />
                                     签署合同
-                                  </Button>
-                                )}
-                                {(lease.status === 'active' || lease.status === 'expired') && (
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => handleViewContract(lease)}
-                                  >
-                                    <FileText className="h-4 w-4 mr-2" />
-                                    查看合同
-                                  </Button>
-                                )}
-                                {lease.status === 'active' && (
-                                  <Button
-                                    variant="destructive"
-                                    size="sm"
-                                    onClick={() => handleTerminateLease(lease.id)}
-                                  >
-                                    <AlertTriangle className="h-4 w-4 mr-2" />
-                                    终止合同
                                   </Button>
                                 )}
                               </div>
@@ -1342,45 +1703,166 @@ export default function LandlordDashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {[
-                      { tenant: "张三", property: "朝阳区幸福小区", issue: "卫生间水龙头漏水", date: "2024-03-10", status: "待处理" },
-                      { tenant: "李四", property: "西城区金融街", issue: "空调不制冷", date: "2024-03-09", status: "处理中" },
-                    ].map((maintenance, i) => (
-                      <div key={i} className="flex justify-between items-start">
-                        <div>
-                          <p className="font-medium">{maintenance.tenant}</p>
-                          <p className="text-sm text-gray-600">{maintenance.property}</p>
-                          <p className="text-sm text-gray-500">{maintenance.issue}</p>
-                          <p className="text-sm text-gray-500">申请时间：{maintenance.date}</p>
-                        </div>
-                        <Badge variant={maintenance.status === "待处理" ? "destructive" : "secondary"}>
-                          {maintenance.status}
-                        </Badge>
+                    {maintenanceLoading ? (
+                      <div className="flex justify-center items-center py-4">
+                        <Loader2 className="h-6 w-6 animate-spin" />
+                        <span className="ml-2">加载中...</span>
                       </div>
-                    ))}
+                    ) : requests.length === 0 ? (
+                      <div className="text-center py-8">
+                        <div className="mb-4">
+                          <Wrench className="h-12 w-12 text-gray-400 mx-auto" />
+                        </div>
+                        <h3 className="text-lg font-medium text-gray-900 mb-2">暂无维修请求</h3>
+                        <p className="text-gray-500">当有租客提交维修请求时，将显示在这里</p>
+                      </div>
+                    ) : (
+                      requests
+                        .filter(request => request.status !== 'completed')
+                        .map((request: MaintenanceType) => (
+                          <Card key={request.id} className="mb-4">
+                            <CardHeader>
+                              <div className="flex justify-between items-center">
+                                <div>
+                                  <h3 className="text-lg font-semibold">维修请求</h3>
+                                  <p className="text-sm text-gray-500">
+                                    提交时间: {new Date(request.submitted_at).toLocaleString()}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Badge variant={
+                                    request.status === 'pending_assignment' ? 'default' :
+                                    request.status === 'assigned_to_worker' ? 'secondary' :
+                                    request.status === 'in_progress' ? 'secondary' :
+                                    request.status === 'completed' ? 'default' :
+                                    'destructive'
+                                  }>
+                                    {request.status === 'pending_assignment' ? '待处理' :
+                                     request.status === 'assigned_to_worker' ? '已分配工人' :
+                                     request.status === 'in_progress' ? '维修中' :
+                                     request.status === 'completed' ? '已完成' :
+                                     '已关闭'}
+                                  </Badge>
+                                  {request.status === 'completed' && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                                      onClick={() => {
+                                        setRequests(prevRequests => 
+                                          prevRequests.filter(r => r.id !== request.id)
+                                        )
+                                      }}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            </CardHeader>
+                            <CardContent>
+                              <div className="grid gap-4">
+                                <div>
+                                  <h4 className="font-medium mb-2">房产信息</h4>
+                                  <p className="text-sm text-gray-600">
+                                    {request.property_summary?.title || '未知房源'}
+                                  </p>
+                                </div>
+                                <div>
+                                  <h4 className="font-medium mb-2">租客信息</h4>
+                                  <p className="text-sm text-gray-600">
+                                    {request.tenant_info?.username || '未知租客'}
+                                  </p>
+                                </div>
+                                <div>
+                                  <h4 className="font-medium mb-2">问题描述</h4>
+                                  <p className="text-sm text-gray-600">{request.description}</p>
+                                </div>
+                                {request.assigned_worker_name && (
+                                  <div>
+                                    <h4 className="font-medium mb-2">维修工人</h4>
+                                    <p className="text-sm text-gray-600">
+                                      {request.assigned_worker_name} ({request.worker_contact_info})
+                                    </p>
+                                  </div>
+                                )}
+                                {request.resolution_notes && (
+                                  <div>
+                                    <h4 className="font-medium mb-2">处理结果</h4>
+                                    <p className="text-sm text-gray-600">{request.resolution_notes}</p>
+                                  </div>
+                                )}
+                              </div>
+                            </CardContent>
+                            <CardFooter>
+                              <div className="flex gap-2">
+                                {request.status === 'pending_assignment' && (
+                                  <Button
+                                    variant="outline"
+                                    onClick={() => handleRequestStatusChange(request.id, 'assigned_to_worker')}
+                                  >
+                                    分配工人
+                                  </Button>
+                                )}
+                                {request.status === 'assigned_to_worker' && (
+                                  <Button
+                                    variant="outline"
+                                    onClick={() => handleRequestStatusChange(request.id, 'in_progress')}
+                                  >
+                                    开始维修
+                                  </Button>
+                                )}
+                                {request.status === 'in_progress' && (
+                                  <Button
+                                    variant="outline"
+                                    onClick={() => handleRequestStatusChange(request.id, 'completed')}
+                                  >
+                                    完成维修
+                                  </Button>
+                                )}
+                                {request.status === 'completed' && (
+                                  <Button
+                                    variant="outline"
+                                    onClick={() => handleRequestStatusChange(request.id, 'closed_by_landlord')}
+                                  >
+                                    关闭请求
+                                  </Button>
+                                )}
+                                {request.status === 'pending_assignment' && (
+                                  <Button
+                                    variant="outline"
+                                    className="text-red-500 hover:text-red-700"
+                                    onClick={() => handleRequestStatusChange(request.id, 'closed_by_landlord')}
+                                  >
+                                    关闭请求
+                                  </Button>
+                                )}
+                              </div>
+                            </CardFooter>
+                          </Card>
+                        ))
+                    )}
                   </div>
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader>
-                  <CardTitle>维修历史</CardTitle>
-                  <CardDescription>已完成的维修记录</CardDescription>
+                  <CardTitle>维修统计</CardTitle>
+                  <CardDescription>维修请求统计</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
                     {[
-                      { tenant: "王五", property: "海淀区学院路", issue: "门锁更换", date: "2024-03-01", cost: "¥200" },
-                      { tenant: "张三", property: "朝阳区幸福小区", issue: "厨房下水道疏通", date: "2024-02-28", cost: "¥150" },
-                    ].map((record, i) => (
-                      <div key={i} className="flex justify-between items-start">
-                        <div>
-                          <p className="font-medium">{record.tenant}</p>
-                          <p className="text-sm text-gray-600">{record.property}</p>
-                          <p className="text-sm text-gray-500">{record.issue}</p>
-                          <p className="text-sm text-gray-500">完成时间：{record.date}</p>
-                        </div>
-                        <p className="font-medium text-gray-600">{record.cost}</p>
+                      { label: '待处理', status: 'pending_assignment' },
+                      { label: '处理中', status: 'in_progress' },
+                      { label: '已完成', status: 'completed' }
+                    ].map((stat) => (
+                      <div key={stat.label} className="flex justify-between items-center">
+                        <p className="text-sm text-gray-600">{stat.label}</p>
+                        <p className="font-medium">
+                          {requests.filter(r => r.status === stat.status).length}
+                        </p>
                       </div>
                     ))}
                   </div>
@@ -1393,31 +1875,41 @@ export default function LandlordDashboard() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <Card className="lg:col-span-1">
                 <CardHeader>
-                  <CardTitle>未读消息</CardTitle>
+                  <CardTitle>未读消息 <span className="ml-2 text-red-500">{unreadCount}</span></CardTitle>
                   <CardDescription>需要您回复的消息</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {[
-                      { id: 1, sender: "张三", content: "请问什么时候可以看房？", time: "10分钟前", unread: true },
-                      { id: 2, sender: "李四", content: "维修师傅什么时候能来？", time: "30分钟前", unread: true },
-                    ].map((message) => (
-                      <div
-                        key={message.id}
-                        className={`flex justify-between items-start p-3 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors ${selectedChat?.id === message.id ? "bg-gray-100" : ""
-                          }`}
-                        onClick={() => setSelectedChat(message)}
-                      >
-                        <div>
-                          <p className="font-medium">{message.sender}</p>
-                          <p className="text-sm text-gray-600">{message.content}</p>
-                          <p className="text-sm text-gray-500">{message.time}</p>
-                        </div>
-                        {message.unread && (
-                          <Badge variant="default">未读</Badge>
-                        )}
+                    {messages.length === 0 ? (
+                      <div className="text-center py-4">
+                        <p className="text-gray-500">暂无消息</p>
                       </div>
-                    ))}
+                    ) : (
+                      messages
+                        .filter(message => !message.is_read_by_receiver && message.receiver_id === user?.id)
+                        .map((message) => {
+                          console.log('渲染未读消息:', message);
+                          return (
+                            <div
+                              key={message.id}
+                              className={`flex justify-between items-start p-3 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors ${
+                                selectedChatUserId === message.sender_id ? "bg-gray-100" : ""
+                              }`}
+                              onClick={() => {
+                                console.log('点击未读消息，发送者ID:', message.sender_id);
+                                fetchMessages(message.sender_id);
+                              }}
+                            >
+                              <div>
+                                <p className="font-medium">{message.sender?.username || '未知用户'}</p>
+                                <p className="text-sm text-gray-600">{message.content}</p>
+                                <p className="text-sm text-gray-500">{new Date(message.sent_at).toLocaleString()}</p>
+                              </div>
+                              <Badge variant="default">未读</Badge>
+                            </div>
+                          );
+                        })
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -1428,45 +1920,44 @@ export default function LandlordDashboard() {
                   <CardDescription>最近的对话记录</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {selectedChat ? (
+                  {selectedChatUserId ? (
                     <div className="flex flex-col h-[500px]">
                       <div className="flex-1 overflow-y-auto space-y-4 mb-4">
-                        {[
-                          { id: 1, sender: selectedChat.sender, content: selectedChat.content, time: selectedChat.time, isTenant: true },
-                          { id: 2, sender: "我", content: "您好，请问有什么可以帮您？", time: "刚刚", isTenant: false },
-                        ].map((message) => (
-                          <div
-                            key={message.id}
-                            className={`flex ${message.isTenant ? "justify-start" : "justify-end"}`}
-                          >
-                            <div
-                              className={`max-w-[70%] p-3 rounded-lg ${message.isTenant
-                                  ? "bg-gray-100"
-                                  : "bg-blue-100"
-                                }`}
-                            >
-                              <p className="font-medium">{message.sender}</p>
-                              <p className="text-sm">{message.content}</p>
-                              <p className="text-xs text-gray-500 mt-1">{message.time}</p>
-                            </div>
+                        {isLoadingMessages ? (
+                          <div className="flex justify-center items-center h-full">
+                            <Loader2 className="h-6 w-6 animate-spin" />
                           </div>
-                        ))}
+                        ) : messages.length === 0 ? (
+                          <div className="text-center py-4">
+                            <p className="text-gray-500">暂无消息记录</p>
+                          </div>
+                        ) : (
+                          renderMessages()
+                        )}
                       </div>
                       <div className="flex gap-2">
                         <input
                           type="text"
                           value={messageInput}
-                          onChange={(e) => setMessageInput(e.target.value)}
+                          onChange={(e) => {
+                            console.log('输入消息:', e.target.value);
+                            setMessageInput(e.target.value);
+                          }}
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter') {
+                              console.log('按回车发送消息');
+                              sendMessage();
+                            }
+                          }}
                           placeholder="输入消息..."
                           className="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                         <Button
                           onClick={() => {
-                            if (messageInput.trim()) {
-                              // 这里添加发送消息的逻辑
-                              setMessageInput("")
-                            }
+                            console.log('点击发送按钮');
+                            sendMessage();
                           }}
+                          disabled={!messageInput.trim()}
                         >
                           <Send className="h-4 w-4 mr-2" />
                           发送

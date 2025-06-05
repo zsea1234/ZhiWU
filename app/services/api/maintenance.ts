@@ -3,75 +3,51 @@ import { api } from './client'
 export interface MaintenanceType {
   id: number
   property_id: number
+  lease_id?: number
   tenant_id: number
-  landlord_id: number
-  title: string
   description: string
-  type: 'repair' | 'replacement' | 'inspection' | 'cleaning' | 'other'
-  priority: 'low' | 'medium' | 'high' | 'emergency'
-  status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
-  scheduled_date?: string
-  completed_date?: string
-  cost?: number
-  assigned_to?: string
-  notes?: string
-  created_at: string
+  preferred_contact_time?: string
+  status: 'pending_assignment' | 'assigned_to_worker' | 'in_progress' | 'completed' | 'cancelled_by_tenant' | 'closed_by_landlord'
+  assigned_worker_name?: string
+  worker_contact_info?: string
+  resolution_notes?: string
+  submitted_at: string
   updated_at: string
-  property: {
+  completed_at?: string
+  tenant_info?: {
+    id: number
+    username: string
+    email: string
+    phone: string
+  }
+  property_summary?: {
     id: number
     title: string
     address_line1: string
     city: string
+    district: string
+    property_type: string
   }
-  tenant: {
-    id: number
-    name: string
-    email: string
-  }
-  media_files: {
-    id: number
-    url: string
-    thumbnail_url?: string
-    media_type: 'image' | 'video'
-    description?: string
-    uploaded_at: string
-  }[]
 }
 
 export interface MaintenanceCreateInput {
   property_id: number
-  title: string
+  lease_id?: number
   description: string
-  type: MaintenanceType['type']
-  priority: MaintenanceType['priority']
-  scheduled_date?: string
-  assigned_to?: string
-  notes?: string
-  images?: File[]
-  videos?: File[]
+  preferred_contact_time?: string
 }
 
 export interface MaintenanceUpdateInput {
-  title?: string
-  description?: string
-  type?: MaintenanceType['type']
-  priority?: MaintenanceType['priority']
   status?: MaintenanceType['status']
-  scheduled_date?: string
-  completed_date?: string
-  cost?: number
-  assigned_to?: string
-  notes?: string
-  images?: File[]
-  videos?: File[]
+  assigned_worker_name?: string
+  worker_contact_info?: string
+  resolution_notes?: string
 }
 
 export interface MaintenanceListParams {
   property_id?: number
   tenant_id?: number
   landlord_id?: number
-  type?: MaintenanceType['type']
-  priority?: MaintenanceType['priority']
   status?: MaintenanceType['status']
   start_date?: string
   end_date?: string
@@ -107,22 +83,29 @@ export interface MaintenanceSummary {
 }
 
 export interface PaginatedResponse<T> {
-  data: T[]
-  links: {
-    first: string | null
-    last: string | null
-    prev: string | null
-    next: string | null
-  }
-  meta: {
-    current_page: number
-    from: number | null
-    last_page: number
-    path: string
-    per_page: number
-    to: number | null
-    total: number
-  }
+  data: {
+    items: T[];
+    page: number;
+    total_pages: number;
+    total_items: number;
+    links?: {
+      first: string | null;
+      last: string | null;
+      prev: string | null;
+      next: string | null;
+    };
+    meta?: {
+      current_page: number;
+      from: number | null;
+      last_page: number;
+      path: string;
+      per_page: number;
+      to: number | null;
+      total: number;
+    };
+  };
+  message: string;
+  success: boolean;
 }
 
 export const maintenanceApi = {
@@ -136,109 +119,51 @@ export const maintenanceApi = {
       })
     }
     const queryString = queryParams.toString()
-    const endpoint = queryString ? `/maintenance?${queryString}` : '/maintenance'
+    const endpoint = queryString ? `/maintenance-requests?${queryString}` : '/maintenance-requests'
     return api.get<PaginatedResponse<MaintenanceType>>(endpoint)
   },
 
   get: async (id: number) => {
-    return api.get<MaintenanceType>(`/maintenance/${id}`)
+    return api.get<MaintenanceType>(`/maintenance-requests/${id}`)
   },
 
   create: async (data: MaintenanceCreateInput) => {
-    const formData = new FormData()
-    
-    // Add all text fields
-    Object.entries(data).forEach(([key, value]) => {
-      if (key !== 'images' && key !== 'videos') {
-        if (value !== undefined) {
-          formData.append(key, String(value))
-        }
-      }
-    })
-
-    // Add files
-    if (data.images) {
-      data.images.forEach((file) => {
-        formData.append('images', file)
-      })
-    }
-
-    if (data.videos) {
-      data.videos.forEach((file) => {
-        formData.append('videos', file)
-      })
-    }
-
-    return api.post<MaintenanceType>('/maintenance', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    })
+    return api.post<MaintenanceType>('/maintenance-requests', data)
   },
 
   update: async (id: number, data: MaintenanceUpdateInput) => {
-    const formData = new FormData()
-    
-    // Add all text fields
-    Object.entries(data).forEach(([key, value]) => {
-      if (key !== 'images' && key !== 'videos') {
-        if (value !== undefined) {
-          formData.append(key, String(value))
-        }
-      }
-    })
-
-    // Add files
-    if (data.images) {
-      data.images.forEach((file) => {
-        formData.append('images', file)
-      })
-    }
-
-    if (data.videos) {
-      data.videos.forEach((file) => {
-        formData.append('videos', file)
-      })
-    }
-
-    return api.put<MaintenanceType>(`/maintenance/${id}`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    })
+    return api.put<MaintenanceType>(`/maintenance-requests/${id}`, data)
   },
 
   delete: async (id: number) => {
-    return api.delete(`/maintenance/${id}`)
+    return api.delete(`/maintenance-requests/${id}`)
   },
 
-  startWork: async (id: number, assigned_to: string) => {
-    return api.put<MaintenanceType>(`/maintenance/${id}/start`, { assigned_to })
-  },
-
-  complete: async (id: number, data: { completed_date: string; cost: number; notes?: string }) => {
-    return api.put<MaintenanceType>(`/maintenance/${id}/complete`, data)
-  },
-
-  cancel: async (id: number, reason: string) => {
-    return api.put<MaintenanceType>(`/maintenance/${id}/cancel`, { reason })
-  },
-
-  uploadMedia: async (id: number, files: File[]) => {
-    const formData = new FormData()
-    files.forEach((file) => {
-      formData.append('files', file)
-    })
-
-    return api.post(`/maintenance/${id}/media`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
+  assignWorker: async (id: number, workerName: string, contactInfo: string) => {
+    return api.put<MaintenanceType>(`/maintenance-requests/${id}/assign-worker`, {
+      assigned_worker_name: workerName,
+      worker_contact_info: contactInfo
     })
   },
 
-  deleteMedia: async (id: number, mediaId: number) => {
-    return api.delete(`/maintenance/${id}/media/${mediaId}`)
+  startWork: async (id: number) => {
+    return api.put<MaintenanceType>(`/maintenance-requests/${id}/start-work`)
+  },
+
+  complete: async (id: number, resolutionNotes?: string) => {
+    return api.put<MaintenanceType>(`/maintenance-requests/${id}/complete`, {
+      resolution_notes: resolutionNotes
+    })
+  },
+
+  cancel: async (id: number) => {
+    return api.put<MaintenanceType>(`/maintenance-requests/${id}/cancel`)
+  },
+
+  close: async (id: number, resolutionNotes?: string) => {
+    return api.put<MaintenanceType>(`/maintenance-requests/${id}/close`, {
+      resolution_notes: resolutionNotes
+    })
   },
 
   getSummary: async (params?: { start_date?: string; end_date?: string }) => {
