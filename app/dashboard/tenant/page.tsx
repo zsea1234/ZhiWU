@@ -26,7 +26,7 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/components/ui/use-toast"
@@ -34,11 +34,19 @@ import { useToast } from "@/components/ui/use-toast"
 // 接口定义
 interface Message {
   id: number
-  sender: string
+  sender_id: number
+  receiver_id: number
   content: string
-  time: string
-  unread?: boolean
-  isLandlord?: boolean
+  sent_at: string
+  is_read_by_receiver: boolean
+  sender?: {
+    id: number
+    username: string
+  }
+  receiver?: {
+    id: number
+    username: string
+  }
 }
 
 interface Booking {
@@ -114,6 +122,14 @@ interface MaintenanceRequest {
   assigned_worker_name: string | null
   worker_contact_info: string | null
   resolution_notes: string | null
+  property_summary: {
+    id: number
+    title: string
+    address_line1: string
+    city: string
+    district: string
+    property_type: string
+  }
 }
 
 interface ContractPreview {
@@ -166,6 +182,17 @@ export default function TenantDashboard() {
   })
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null)
   const [detailDialogOpen, setDetailDialogOpen] = useState(false)
+  const [selectedMaintenanceRequest, setSelectedMaintenanceRequest] = useState<MaintenanceRequest | null>(null)
+  const [maintenanceDetailDialogOpen, setMaintenanceDetailDialogOpen] = useState(false)
+  const [userProperties, setUserProperties] = useState<Array<{id: number, title: string}>>([])
+  const [messages, setMessages] = useState<Message[]>([])
+  const [selectedChatUser, setSelectedChatUser] = useState<number | null>(null)
+  const [newMessage, setNewMessage] = useState('')
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [chatUsers, setChatUsers] = useState<{id: number, username: string}[]>([])
+  const [showNewMessageDialog, setShowNewMessageDialog] = useState(false)
+  const [selectedReceiver, setSelectedReceiver] = useState<number | null>(null)
+  const [currentUser, setCurrentUser] = useState<{id: number, username: string} | null>(null)
 
   // 统计数据
   const stats = {
@@ -193,6 +220,17 @@ export default function TenantDashboard() {
     fetchBookings()
     fetchLeases()
     fetchMaintenanceRequests()
+    fetchUserProperties()
+
+    // 在组件加载时获取当前用户信息
+    const userInfoStr = localStorage.getItem('user_info')
+    if (userInfoStr) {
+      const userInfo = JSON.parse(userInfoStr)
+      setCurrentUser({
+        id: userInfo.id,
+        username: userInfo.username
+      })
+    }
   }, [router])
 
   const fetchBookings = async () => {
@@ -298,83 +336,114 @@ export default function TenantDashboard() {
 
   const fetchMaintenanceRequests = async () => {
     try {
+      setIsLoadingMaintenance(true)
       const token = localStorage.getItem('auth_token')
-      if (!token) {
-        router.push('/auth/login')
-        return
-      }
-  
-      // 获取用户角色
-      const userRole = localStorage.getItem('user_role')
-      if (!userRole || userRole.toLowerCase() !== 'tenant') {
-        console.error('Invalid user role:', userRole)
-        toast({
-          title: "错误",
-          description: "用户角色无效",
-          variant: "destructive"
-        })
-        return
-      }
-  
-      console.log('Fetching maintenance requests with token:', token)
-      console.log('User role:', userRole)
-  
+      console.log('开始获取维修申请列表，token:', token)
+      
       const response = await fetch('http://localhost:5001/api/v1/maintenance-requests', {
-        method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       })
       
-      // 打印响应状态和头信息
-      console.log('Response status:', response.status)
-      console.log('Response headers:', Object.fromEntries(response.headers.entries()))
-      
-      if (response.status === 401) {
-        localStorage.removeItem('auth_token')
-        localStorage.removeItem('user_info')
-        localStorage.removeItem('user_role')
-        router.push('/auth/login')
-        return
-      }
+      console.log('API响应状态:', response.status)
       
       if (!response.ok) {
-        // 尝试读取错误信息
-        const errorData = await response.json().catch(() => null)
-        console.error('Error response:', errorData)
-        throw new Error(`HTTP error! status: ${response.status}, message: ${errorData?.message || 'Unknown error'}`)
+        throw new Error(`HTTP error! status: ${response.status}`)
       }
       
       const data = await response.json()
-      console.log('Response data:', data)
+      console.log('API返回数据:', data)
       
-      // 更安全的数据结构处理
-      if (data.data) {
-        if (Array.isArray(data.data)) {
-          // 如果直接是数组
-          setMaintenanceRequests(data.data)
-        } else if (data.data.items && Array.isArray(data.data.items)) {
-          // 如果是分页数据结构
-          setMaintenanceRequests(data.data.items)
-        } else {
-          console.error('Unexpected data structure:', data)
-          setMaintenanceRequests([])
-        }
+      if (data.success && data.data && data.data.items) {
+        setMaintenanceRequests(data.data.items)
       } else {
-        console.error('No data in response:', data)
+        console.error('无效的数据格式:', data)
         setMaintenanceRequests([])
+        toast({
+          title: "错误",
+          description: "获取维修申请列表失败",
+          variant: "destructive"
+        })
       }
     } catch (error) {
-      console.error('Error fetching maintenance requests:', error)
+      console.error('获取维修申请列表错误:', error)
       toast({
         title: "错误",
-        description: error instanceof Error ? error.message : "获取维修请求列表失败",
+        description: "获取维修申请列表失败",
         variant: "destructive"
       })
       setMaintenanceRequests([])
     } finally {
       setIsLoadingMaintenance(false)
+    }
+  }
+
+  const fetchUserProperties = async () => {
+    try {
+      const token = localStorage.getItem('auth_token')
+      if (!token) {
+        toast({
+          title: "提示",
+          description: "请先登录后再提交维修申请",
+          variant: "destructive"
+        })
+        return
+      }
+
+      const response = await fetch('http://localhost:5001/api/v1/leases?status=active', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          // 没有活跃租约的情况
+          toast({
+            title: "提示",
+            description: "您当前没有租住的房源，请先租房后再提交维修申请",
+            variant: "default"
+          })
+          return
+        }
+        throw new Error('获取房源列表失败')
+      }
+
+      const data = await response.json()
+      if (data.success && data.data && data.data.items) {
+        const properties = data.data.items.map((lease: any) => ({
+          id: lease.property_summary.id,
+          title: lease.property_summary.title
+        }))
+        setUserProperties(properties)
+        
+        if (properties.length === 0) {
+          toast({
+            title: "提示",
+            description: "您当前没有租住的房源，请先租房后再提交维修申请",
+            variant: "default"
+          })
+        }
+      }
+    } catch (error) {
+      console.error('获取房源列表错误:', error)
+      // 检查是否是网络连接错误
+      if (error instanceof TypeError && error.message === 'Failed to fetch') {
+        toast({
+          title: "连接错误",
+          description: "无法连接到服务器，请检查网络连接或稍后重试",
+          variant: "destructive"
+        })
+      } else {
+        toast({
+          title: "错误",
+          description: "获取房源列表失败，请稍后重试",
+          variant: "destructive"
+        })
+      }
     }
   }
 
@@ -491,6 +560,24 @@ export default function TenantDashboard() {
 
   const handleSubmitMaintenanceRequest = async () => {
     try {
+      if (!newMaintenanceRequest.property_id) {
+        toast({
+          title: "错误",
+          description: "请选择需要维修的房源",
+          variant: "destructive"
+        })
+        return
+      }
+
+      if (!newMaintenanceRequest.description.trim()) {
+        toast({
+          title: "错误",
+          description: "请填写问题描述",
+          variant: "destructive"
+        })
+        return
+      }
+
       const token = localStorage.getItem('auth_token')
       const response = await fetch('http://localhost:5001/api/v1/maintenance-requests', {
         method: 'POST',
@@ -498,27 +585,242 @@ export default function TenantDashboard() {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(newMaintenanceRequest)
+        body: JSON.stringify({
+          property_id: newMaintenanceRequest.property_id,
+          description: newMaintenanceRequest.description,
+          preferred_contact_time: newMaintenanceRequest.preferred_contact_time || undefined
+        })
       })
 
       if (!response.ok) {
-        throw new Error('提交维修申请失败')
+        const errorData = await response.json().catch(() => null)
+        throw new Error(errorData?.message || '提交维修申请失败')
       }
 
       toast({
         title: "成功",
         description: "维修申请已提交"
       })
+      setNewMaintenanceRequest({
+        property_id: 0,
+        description: '',
+        preferred_contact_time: ''
+      })
       fetchMaintenanceRequests()
     } catch (error) {
-      console.error('Error submitting maintenance request:', error)
+      console.error('提交维修申请错误:', error)
       toast({
         title: "错误",
-        description: "提交维修申请失败",
+        description: error instanceof Error ? error.message : "提交维修申请失败",
         variant: "destructive"
       })
     }
   }
+
+  const handleCancelMaintenanceRequest = async (requestId: number) => {
+    try {
+      const token = localStorage.getItem('auth_token')
+      const response = await fetch(`http://localhost:5001/api/v1/maintenance-requests/${requestId}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          status: 'CANCELLED_BY_TENANT'
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error('取消维修申请失败')
+      }
+
+      toast({
+        title: "成功",
+        description: "维修申请已取消"
+      })
+      fetchMaintenanceRequests()
+    } catch (error) {
+      console.error('Error cancelling maintenance request:', error)
+      toast({
+        title: "错误",
+        description: "取消维修申请失败",
+        variant: "destructive"
+      })
+    }
+  }
+
+  const getMaintenanceStatusBadge = (status: string) => {
+    const statusMap: Record<string, { label: string; variant: string }> = {
+      'PENDING_ASSIGNMENT': { label: '待分配', variant: 'warning' },
+      'ASSIGNED_TO_WORKER': { label: '已分配', variant: 'info' },
+      'IN_PROGRESS': { label: '处理中', variant: 'info' },
+      'COMPLETED': { label: '已完成', variant: 'success' },
+      'CANCELLED_BY_TENANT': { label: '已取消', variant: 'destructive' },
+      'CLOSED_BY_LANDLORD': { label: '已关闭', variant: 'secondary' }
+    }
+
+    const statusInfo = statusMap[status] || { label: '未知状态', variant: 'secondary' }
+    return <Badge variant={statusInfo.variant as any}>{statusInfo.label}</Badge>
+  }
+
+  // 获取未读消息数
+  const fetchUnreadCount = async () => {
+    try {
+      const token = localStorage.getItem('auth_token')
+      const response = await fetch('http://localhost:5001/api/v1/messages/unread-count', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+      
+      if (!response.ok) {
+        throw new Error('获取未读消息数失败')
+      }
+      
+      const data = await response.json()
+      setUnreadCount(data.data.unread_count)
+    } catch (error) {
+      console.error('获取未读消息数错误:', error)
+    }
+  }
+
+  // 获取消息列表
+  const fetchMessages = async (userId: number) => {
+    try {
+      const token = localStorage.getItem('auth_token')
+      const response = await fetch(`http://localhost:5001/api/v1/messages?chat_with_user_id=${userId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+      
+      if (!response.ok) {
+        throw new Error('获取消息列表失败')
+      }
+      
+      const data = await response.json()
+      setMessages(data.data)
+    } catch (error) {
+      console.error('获取消息列表错误:', error)
+      toast({
+        title: "错误",
+        description: "获取消息列表失败",
+        variant: "destructive"
+      })
+    }
+  }
+
+  // 发送消息
+  const sendMessage = async () => {
+    if (!selectedChatUser || !newMessage.trim()) {
+      return
+    }
+
+    try {
+      const token = localStorage.getItem('auth_token')
+      const response = await fetch('http://localhost:5001/api/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          receiver_id: selectedChatUser,
+          content: newMessage.trim()
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error('发送消息失败')
+      }
+
+      const data = await response.json()
+      setMessages(prev => [data.data, ...prev])
+      setNewMessage('')
+    } catch (error) {
+      console.error('发送消息错误:', error)
+      toast({
+        title: "错误",
+        description: "发送消息失败",
+        variant: "destructive"
+      })
+    }
+  }
+
+  // 获取聊天对象列表
+  const fetchChatUsers = async () => {
+    try {
+      const token = localStorage.getItem('auth_token')
+      if (!token || !currentUser) {
+        toast({
+          title: "错误",
+          description: "请先登录",
+          variant: "destructive"
+        })
+        return
+      }
+
+      // 获取所有消息记录
+      const response = await fetch('http://localhost:5001/api/v1/messages', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+      
+      if (!response.ok) {
+        throw new Error('获取消息记录失败')
+      }
+      
+      const data = await response.json()
+      const messages = data.data.items as Message[]
+      
+      // 从消息中提取聊天对象信息
+      const chatUsers = new Map<number, { id: number; username: string }>()
+      
+      messages.forEach(message => {
+        const otherUserId = message.sender_id === currentUser.id 
+          ? message.receiver_id 
+          : message.sender_id
+        const otherUsername = message.sender_id === currentUser.id 
+          ? message.receiver?.username 
+          : message.sender?.username
+        
+        if (otherUserId && otherUsername) {
+          chatUsers.set(otherUserId, {
+            id: otherUserId,
+            username: otherUsername
+          })
+        }
+      })
+      
+      setChatUsers(Array.from(chatUsers.values()))
+    } catch (error) {
+      console.error('获取聊天对象列表错误:', error)
+      toast({
+        title: "错误",
+        description: "获取聊天对象列表失败",
+        variant: "destructive"
+      })
+    }
+  }
+
+  // 在组件加载时获取房东列表
+  useEffect(() => {
+    fetchChatUsers()
+  }, [])
+
+  // 在组件加载时获取未读消息数
+  useEffect(() => {
+    fetchUnreadCount()
+  }, [])
+
+  // 当选择聊天对象时获取消息
+  useEffect(() => {
+    if (selectedChatUser) {
+      fetchMessages(selectedChatUser)
+    }
+  }, [selectedChatUser])
 
   if (!user) {
     return (
@@ -771,108 +1073,240 @@ export default function TenantDashboard() {
           </TabsContent>
 
           <TabsContent value="maintenance" className="space-y-4">
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button>
-                  <Plus className="w-4 h-4 mr-2" />
-                  提交维修申请
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>提交维修申请</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-sm font-medium">问题描述</label>
-                    <Textarea
-                      value={newMaintenanceRequest.description}
-                      onChange={(e) => setNewMaintenanceRequest({
-                        ...newMaintenanceRequest,
-                        description: e.target.value
-                      })}
-                      placeholder="请详细描述需要维修的问题..."
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium">期望联系时间</label>
-                    <Input
-                      value={newMaintenanceRequest.preferred_contact_time}
-                      onChange={(e) => setNewMaintenanceRequest({
-                        ...newMaintenanceRequest,
-                        preferred_contact_time: e.target.value
-                      })}
-                      placeholder="例如：工作日下午"
-                    />
-                  </div>
-                  <Button onClick={handleSubmitMaintenanceRequest}>
-                    提交申请
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold">维修申请</h2>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button>
+                    <Plus className="w-4 h-4 mr-2" />
+                    添加新的维修申请
                   </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-[425px]">
+                  <DialogHeader>
+                    <DialogTitle>提交维修申请</DialogTitle>
+                    <DialogDescription>
+                      请填写维修申请信息，带 * 的字段为必填项。
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-sm font-medium">选择房源 *</label>
+                      <select
+                        className="w-full p-2 border rounded-md"
+                        value={newMaintenanceRequest.property_id}
+                        onChange={(e) => setNewMaintenanceRequest({
+                          ...newMaintenanceRequest,
+                          property_id: Number(e.target.value)
+                        })}
+                        aria-label="选择需要维修的房源"
+                      >
+                        <option value={0}>请选择房源</option>
+                        {userProperties.map((property) => (
+                          <option key={property.id} value={property.id}>
+                            {property.title}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">问题描述 *</label>
+                      <Textarea
+                        value={newMaintenanceRequest.description}
+                        onChange={(e) => setNewMaintenanceRequest({
+                          ...newMaintenanceRequest,
+                          description: e.target.value
+                        })}
+                        placeholder="请详细描述需要维修的问题..."
+                        aria-label="维修问题描述"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">期望联系时间</label>
+                      <Input
+                        value={newMaintenanceRequest.preferred_contact_time}
+                        onChange={(e) => setNewMaintenanceRequest({
+                          ...newMaintenanceRequest,
+                          preferred_contact_time: e.target.value
+                        })}
+                        placeholder="例如：工作日下午"
+                        aria-label="期望的联系时间"
+                      />
+                    </div>
+                    <Button onClick={handleSubmitMaintenanceRequest}>
+                      提交申请
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </div>
 
             {isLoadingMaintenance ? (
               <div className="flex justify-center">
                 <Loader2 className="w-6 h-6 animate-spin" />
+              </div>
+            ) : maintenanceRequests.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-gray-500 mb-4">暂无维修申请记录</p>
               </div>
             ) : (
               <div className="grid gap-4">
                 {maintenanceRequests.map((request) => (
                   <Card key={request.id}>
                     <CardHeader>
-                      <CardTitle>维修申请 #{request.id}</CardTitle>
-                      <CardDescription>
-                        提交时间：{new Date(request.created_at).toLocaleString()}
-                      </CardDescription>
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <CardTitle>{request.property_summary.title}</CardTitle>
+                          <CardDescription>
+                            {request.property_summary.address_line1}, {request.property_summary.city}
+                          </CardDescription>
+                        </div>
+                        {getMaintenanceStatusBadge(request.status)}
+                      </div>
                     </CardHeader>
                     <CardContent>
-                      <div className="space-y-2">
-                        <p>{request.description}</p>
-                        <p>状态：{request.status}</p>
+                      <div className="space-y-4">
+                        <div>
+                          <p className="text-sm font-medium">问题描述</p>
+                          <p className="text-sm text-gray-500">{request.description}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium">提交时间</p>
+                          <p className="text-sm text-gray-500">
+                            {new Date(request.created_at).toLocaleString()}
+                          </p>
+                        </div>
                         {request.assigned_worker_name && (
-                          <p>维修人员：{request.assigned_worker_name}</p>
+                          <div>
+                            <p className="text-sm font-medium">维修人员</p>
+                            <p className="text-sm text-gray-500">{request.assigned_worker_name}</p>
+                            {request.worker_contact_info && (
+                              <p className="text-sm text-gray-500">联系方式：{request.worker_contact_info}</p>
+                            )}
+                          </div>
                         )}
                         {request.resolution_notes && (
-                          <p>处理结果：{request.resolution_notes}</p>
+                          <div>
+                            <p className="text-sm font-medium">处理结果</p>
+                            <p className="text-sm text-gray-500">{request.resolution_notes}</p>
+                          </div>
                         )}
+                        <div className="flex justify-end space-x-2">
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              setSelectedMaintenanceRequest(request)
+                              setMaintenanceDetailDialogOpen(true)
+                            }}
+                          >
+                            <Eye className="w-4 h-4 mr-2" />
+                            查看详情
+                          </Button>
+                          {request.status === 'PENDING_ASSIGNMENT' && (
+                            <Button
+                              variant="destructive"
+                              onClick={() => handleCancelMaintenanceRequest(request.id)}
+                            >
+                              <X className="w-4 h-4 mr-2" />
+                              取消申请
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
                 ))}
               </div>
             )}
+
+            {/* 维修申请详情对话框 */}
+            <Dialog open={maintenanceDetailDialogOpen} onOpenChange={setMaintenanceDetailDialogOpen}>
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>维修申请详情</DialogTitle>
+                </DialogHeader>
+                {selectedMaintenanceRequest && (
+                  <div className="space-y-4">
+                    <div>
+                      <h3 className="font-medium">房源信息</h3>
+                      <p className="text-sm text-gray-500">{selectedMaintenanceRequest.property_summary.title}</p>
+                      <p className="text-sm text-gray-500">
+                        {selectedMaintenanceRequest.property_summary.address_line1}, {selectedMaintenanceRequest.property_summary.city}
+                      </p>
+                    </div>
+                    <div>
+                      <h3 className="font-medium">问题描述</h3>
+                      <p className="text-sm text-gray-500">{selectedMaintenanceRequest.description}</p>
+                    </div>
+                    <div>
+                      <h3 className="font-medium">申请状态</h3>
+                      <p className="text-sm text-gray-500">{getMaintenanceStatusBadge(selectedMaintenanceRequest.status)}</p>
+                    </div>
+                    <div>
+                      <h3 className="font-medium">提交时间</h3>
+                      <p className="text-sm text-gray-500">
+                        {new Date(selectedMaintenanceRequest.created_at).toLocaleString()}
+                      </p>
+                    </div>
+                    {selectedMaintenanceRequest.assigned_worker_name && (
+                      <div>
+                        <h3 className="font-medium">维修人员信息</h3>
+                        <p className="text-sm text-gray-500">姓名：{selectedMaintenanceRequest.assigned_worker_name}</p>
+                        {selectedMaintenanceRequest.worker_contact_info && (
+                          <p className="text-sm text-gray-500">联系方式：{selectedMaintenanceRequest.worker_contact_info}</p>
+                        )}
+                      </div>
+                    )}
+                    {selectedMaintenanceRequest.resolution_notes && (
+                      <div>
+                        <h3 className="font-medium">处理结果</h3>
+                        <p className="text-sm text-gray-500">{selectedMaintenanceRequest.resolution_notes}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </DialogContent>
+            </Dialog>
           </TabsContent>
 
           <TabsContent value="messages" className="space-y-4">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold">消息中心</h2>
+              <Button onClick={() => setShowNewMessageDialog(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                发送新消息
+              </Button>
+            </div>
+
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <Card className="lg:col-span-1">
                 <CardHeader>
-                  <CardTitle>未读消息</CardTitle>
-                  <CardDescription>需要您回复的消息</CardDescription>
+                  <CardTitle>聊天列表</CardTitle>
+                  <CardDescription>您的聊天对象</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-4">
-                    {[
-                      { id: 1, sender: "房东", content: "请问什么时候可以看房？", time: "10分钟前", unread: true },
-                      { id: 2, sender: "维修人员", content: "维修师傅什么时候能来？", time: "30分钟前", unread: true },
-                    ].map((message) => (
-                      <div
-                        key={message.id}
-                        className={`flex justify-between items-start p-3 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors ${selectedChat?.id === message.id ? "bg-gray-100" : ""}`}
-                        onClick={() => setSelectedChat(message)}
-                      >
-                        <div>
-                          <p className="font-medium">{message.sender}</p>
-                          <p className="text-sm text-gray-600">{message.content}</p>
-                          <p className="text-sm text-gray-500">{message.time}</p>
+                  {chatUsers.length > 0 ? (
+                    <div className="space-y-2">
+                      {chatUsers.map((user) => (
+                        <div
+                          key={user.id}
+                          className={`p-3 rounded-lg cursor-pointer hover:bg-gray-100 ${
+                            selectedChatUser === user.id ? 'bg-gray-100' : ''
+                          }`}
+                          onClick={() => {
+                            setSelectedChatUser(user.id)
+                            fetchMessages(user.id)
+                          }}
+                        >
+                          <div className="font-medium">{user.username}</div>
                         </div>
-                        {message.unread && (
-                          <Badge variant="default">未读</Badge>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-4 text-gray-500">
+                      暂无聊天记录
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -882,43 +1316,37 @@ export default function TenantDashboard() {
                   <CardDescription>最近的对话记录</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {selectedChat ? (
+                  {selectedChatUser ? (
                     <div className="flex flex-col h-[500px]">
                       <div className="flex-1 overflow-y-auto space-y-4 mb-4">
-                        {[
-                          { id: 1, sender: selectedChat.sender, content: selectedChat.content, time: selectedChat.time, isLandlord: true },
-                          { id: 2, sender: "我", content: "您好，请问有什么可以帮您？", time: "刚刚", isLandlord: false },
-                        ].map((message) => (
+                        {messages.map((message) => (
                           <div
                             key={message.id}
-                            className={`flex ${message.isLandlord ? "justify-start" : "justify-end"}`}
+                            className={`flex ${message.sender_id === selectedChatUser ? "justify-start" : "justify-end"}`}
                           >
                             <div
-                              className={`max-w-[70%] p-3 rounded-lg ${message.isLandlord ? "bg-gray-100" : "bg-blue-100"}`}
+                              className={`max-w-[70%] p-3 rounded-lg ${message.sender_id === selectedChatUser ? "bg-gray-100" : "bg-blue-100"}`}
                             >
-                              <p className="font-medium">{message.sender}</p>
+                              <p className="font-medium">{message.sender_id === selectedChatUser ? message.sender?.username : '我'}</p>
                               <p className="text-sm">{message.content}</p>
-                              <p className="text-xs text-gray-500 mt-1">{message.time}</p>
+                              <p className="text-xs text-gray-500 mt-1">{new Date(message.sent_at).toLocaleString()}</p>
                             </div>
                           </div>
                         ))}
                       </div>
                       <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={messageInput}
-                          onChange={(e) => setMessageInput(e.target.value)}
+                        <Input
+                          value={newMessage}
+                          onChange={(e) => setNewMessage(e.target.value)}
                           placeholder="输入消息..."
-                          className="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                        <Button
-                          onClick={() => {
-                            if (messageInput.trim()) {
-                              // 这里添加发送消息的逻辑
-                              setMessageInput("")
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault()
+                              sendMessage()
                             }
                           }}
-                        >
+                        />
+                        <Button onClick={sendMessage}>
                           <Send className="h-4 w-4 mr-2" />
                           发送
                         </Button>
@@ -932,6 +1360,62 @@ export default function TenantDashboard() {
                 </CardContent>
               </Card>
             </div>
+
+            {/* 发送新消息对话框 */}
+            <Dialog open={showNewMessageDialog} onOpenChange={setShowNewMessageDialog}>
+              <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                  <DialogTitle>发送新消息</DialogTitle>
+                  <DialogDescription>
+                    选择要发送消息的房东
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-sm font-medium">选择房东</label>
+                    <select
+                      className="w-full p-2 border rounded-md mt-1"
+                      value={selectedReceiver || ''}
+                      onChange={(e) => setSelectedReceiver(Number(e.target.value))}
+                    >
+                      <option value="">请选择房东</option>
+                      {chatUsers.map((user) => (
+                        <option key={user.id} value={user.id}>
+                          {user.username}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">消息内容</label>
+                    <Textarea
+                      value={newMessage}
+                      onChange={(e) => setNewMessage(e.target.value)}
+                      placeholder="请输入消息内容..."
+                      className="mt-1"
+                    />
+                  </div>
+                  <Button
+                    onClick={async () => {
+                      if (!selectedReceiver || !newMessage.trim()) {
+                        toast({
+                          title: "错误",
+                          description: "请选择房东并输入消息内容",
+                          variant: "destructive"
+                        })
+                        return
+                      }
+                      await sendMessage()
+                      setShowNewMessageDialog(false)
+                      setSelectedReceiver(null)
+                      setNewMessage('')
+                    }}
+                  >
+                    发送
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
           </TabsContent>
         </Tabs>
       </div>
