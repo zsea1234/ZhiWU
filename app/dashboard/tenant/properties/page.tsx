@@ -7,10 +7,12 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Slider } from "@/components/ui/slider"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { Loader2, Search, MapPin, Home, Calendar, SlidersHorizontal } from "lucide-react"
+import { Loader2, Search, MapPin, Home, Calendar, SlidersHorizontal, ArrowLeft, Settings, LogOut } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { useRouter } from "next/navigation"
-import { Textarea } from "@/components/ui/textarea" 
+import { Textarea } from "@/components/ui/textarea"
+import Link from "next/link"
+import { Badge } from "@/components/ui/badge"
 
 interface Property {
   id: number
@@ -47,6 +49,7 @@ export default function PropertiesPage() {
   const { toast } = useToast()
   const [properties, setProperties] = useState<Property[]>([])
   const [loading, setLoading] = useState(true)
+  const [user, setUser] = useState<any>(null)
   const [filters, setFilters] = useState<SearchFilters>({
     keyword: '',
     property_type: '',
@@ -70,6 +73,13 @@ export default function PropertiesPage() {
       router.push("/auth/login")
       return
     }
+
+    // 获取用户信息
+    const userInfo = localStorage.getItem("user_info")
+    if (userInfo) {
+      setUser(JSON.parse(userInfo))
+    }
+
     console.log('Component mounted, fetching properties...')
     fetchProperties()
   }, [router])
@@ -215,215 +225,276 @@ export default function PropertiesPage() {
     fetchProperties()
   }
 
+  const handleLogout = () => {
+    // 清除本地存储的认证信息
+    localStorage.removeItem("auth_token")
+    localStorage.removeItem("user_info")
+    localStorage.removeItem("user_role")
+    
+    // 显示退出成功提示
+    toast({
+      title: "退出成功",
+      description: "您已安全退出登录"
+    })
+    
+    // 跳转到登录页
+    router.push("/auth/login")
+  }
+
   return (
-    <div className="container mx-auto p-6">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-4">房源浏览</h1>
-        
-        {/* 搜索和筛选区域 */}
-        <div className="space-y-4">
-          <div className="flex gap-2">
-            <Input
-              placeholder="搜索房源..."
-              value={filters.keyword}
-              onChange={(e) => setFilters({...filters, keyword: e.target.value})}
-              className="flex-1"
-            />
-            <Button onClick={handleSearch}>
-              <Search className="w-4 h-4 mr-2" />
-              搜索
-            </Button>
-            <Button variant="outline" onClick={() => setShowFilters(!showFilters)}>
-              <SlidersHorizontal className="w-4 h-4 mr-2" />
-              筛选
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="bg-white border-b">
+        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <Link href="/dashboard/tenant" className="flex items-center space-x-2">
+              <Home className="h-6 w-6 text-blue-600" />
+              <span className="text-xl font-bold">智屋</span>
+            </Link>
+            <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+              租客
+            </Badge>
+          </div>
+          <div className="flex items-center space-x-4">
+            <span className="text-sm text-gray-600">欢迎，{user?.username}</span>
+            <Link href="/dashboard/settings">
+              <Button variant="outline" size="sm">
+                <Settings className="h-4 w-4 mr-2" />
+                设置
+              </Button>
+            </Link>
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={handleLogout}
+              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+            >
+              <LogOut className="h-4 w-4 mr-2" />
+              退出登录
             </Button>
           </div>
-
-          {showFilters && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">房屋类型</label>
-                <Select
-                  value={filters.property_type}
-                  onValueChange={(value) => handleFilterChange('property_type', value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="选择房屋类型" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ALL">全部</SelectItem>
-                    <SelectItem value="APARTMENT">公寓</SelectItem>
-                    <SelectItem value="HOUSE">别墅</SelectItem>
-                    <SelectItem value="STUDIO">开间</SelectItem>
-                    <SelectItem value="SHARED_ROOM">合租单间</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">城市</label>
-                <Select
-                  value={filters.city}
-                  onValueChange={(value) => handleFilterChange('city', value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="选择城市" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ALL">全部</SelectItem>
-                    <SelectItem value="北京">北京</SelectItem>
-                    <SelectItem value="上海">上海</SelectItem>
-                    <SelectItem value="广州">广州</SelectItem>
-                    <SelectItem value="深圳">深圳</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">卧室数量</label>
-                <Select
-                  value={filters.bedrooms.toString()}
-                  onValueChange={(value) => handleFilterChange('bedrooms', value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="选择卧室数量" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="0">不限</SelectItem>
-                    <SelectItem value="1">1室</SelectItem>
-                    <SelectItem value="2">2室</SelectItem>
-                    <SelectItem value="3">3室</SelectItem>
-                    <SelectItem value="4">4室及以上</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">租金范围 (¥/月)</label>
-                <div className="flex items-center gap-4">
-                  <Input
-                    type="number"
-                    value={filters.min_rent}
-                    onChange={(e) => setFilters({...filters, min_rent: Number(e.target.value)})}
-                    className="w-24"
-                  />
-                  <span>-</span>
-                  <Input
-                    type="number"
-                    value={filters.max_rent}
-                    onChange={(e) => setFilters({...filters, max_rent: Number(e.target.value)})}
-                    className="w-24"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">面积范围 (㎡)</label>
-                <div className="flex items-center gap-4">
-                  <Input
-                    type="number"
-                    value={filters.min_area}
-                    onChange={(e) => setFilters({...filters, min_area: Number(e.target.value)})}
-                    className="w-24"
-                  />
-                  <span>-</span>
-                  <Input
-                    type="number"
-                    value={filters.max_area}
-                    onChange={(e) => setFilters({...filters, max_area: Number(e.target.value)})}
-                    className="w-24"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-end gap-2">
-                <Button onClick={handleResetFilters} variant="outline" className="w-full">
-                  重置筛选
-                </Button>
-              </div>
-            </div>
-          )}
         </div>
-      </div>
+      </header>
 
-      {/* 房源列表 */}
-      {loading ? (
-        <div className="flex justify-center">
-          <Loader2 className="w-6 h-6 animate-spin" />
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {properties.map((property) => (
-            <Card 
-              key={property.id} 
-              className="overflow-hidden"
+      <div className="container mx-auto p-6">
+        <div className="mb-8">
+          <div className="flex items-center gap-4 mb-4">
+            <Button
+              variant="outline"
+              onClick={() => router.back()}
+              className="flex items-center gap-2"
             >
-              <div className="relative h-48">
-                <img
-                  src={property.main_image_url}
-                  alt={property.title}
-                  className="w-full h-full object-cover rounded-t-lg"
+              <ArrowLeft className="h-4 w-4" />
+              返回
+            </Button>
+            <h1 className="text-3xl font-bold">房源浏览</h1>
+          </div>
+          
+          {/* 搜索和筛选区域 */}
+          <div className="space-y-4">
+            <div className="flex gap-2">
+              <Input
+                placeholder="搜索房源..."
+                value={filters.keyword}
+                onChange={(e) => setFilters({...filters, keyword: e.target.value})}
+                className="flex-1"
+              />
+              <Button onClick={handleSearch}>
+                <Search className="w-4 h-4 mr-2" />
+                搜索
+              </Button>
+              <Button variant="outline" onClick={() => setShowFilters(!showFilters)}>
+                <SlidersHorizontal className="w-4 h-4 mr-2" />
+                筛选
+              </Button>
+            </div>
+
+            {showFilters && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">房屋类型</label>
+                  <Select
+                    value={filters.property_type}
+                    onValueChange={(value) => handleFilterChange('property_type', value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="选择房屋类型" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">全部</SelectItem>
+                      <SelectItem value="APARTMENT">公寓</SelectItem>
+                      <SelectItem value="HOUSE">别墅</SelectItem>
+                      <SelectItem value="STUDIO">开间</SelectItem>
+                      <SelectItem value="SHARED_ROOM">合租单间</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">城市</label>
+                  <Select
+                    value={filters.city}
+                    onValueChange={(value) => handleFilterChange('city', value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="选择城市" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">全部</SelectItem>
+                      <SelectItem value="北京">北京</SelectItem>
+                      <SelectItem value="上海">上海</SelectItem>
+                      <SelectItem value="广州">广州</SelectItem>
+                      <SelectItem value="深圳">深圳</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">卧室数量</label>
+                  <Select
+                    value={filters.bedrooms.toString()}
+                    onValueChange={(value) => handleFilterChange('bedrooms', value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="选择卧室数量" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="0">不限</SelectItem>
+                      <SelectItem value="1">1室</SelectItem>
+                      <SelectItem value="2">2室</SelectItem>
+                      <SelectItem value="3">3室</SelectItem>
+                      <SelectItem value="4">4室及以上</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">租金范围 (¥/月)</label>
+                  <div className="flex items-center gap-4">
+                    <Input
+                      type="number"
+                      value={filters.min_rent}
+                      onChange={(e) => setFilters({...filters, min_rent: Number(e.target.value)})}
+                      className="w-24"
+                    />
+                    <span>-</span>
+                    <Input
+                      type="number"
+                      value={filters.max_rent}
+                      onChange={(e) => setFilters({...filters, max_rent: Number(e.target.value)})}
+                      className="w-24"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">面积范围 (㎡)</label>
+                  <div className="flex items-center gap-4">
+                    <Input
+                      type="number"
+                      value={filters.min_area}
+                      onChange={(e) => setFilters({...filters, min_area: Number(e.target.value)})}
+                      className="w-24"
+                    />
+                    <span>-</span>
+                    <Input
+                      type="number"
+                      value={filters.max_area}
+                      onChange={(e) => setFilters({...filters, max_area: Number(e.target.value)})}
+                      className="w-24"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-end gap-2">
+                  <Button onClick={handleResetFilters} variant="outline" className="w-full">
+                    重置筛选
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 房源列表 */}
+        {loading ? (
+          <div className="flex justify-center">
+            <Loader2 className="w-6 h-6 animate-spin" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {properties.map((property) => (
+              <Card 
+                key={property.id} 
+                className="overflow-hidden"
+              >
+                <div className="relative h-48">
+                  <img
+                    src={property.main_image_url}
+                    alt={property.title}
+                    className="w-full h-full object-cover rounded-t-lg"
+                  />
+                </div>
+                <CardHeader>
+                  <CardTitle className="text-xl">{property.title}</CardTitle>
+                  <CardDescription className="flex items-center gap-2">
+                    <MapPin className="w-4 h-4" />
+                    {property.district}, {property.city}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <p className="text-sm text-gray-500">月租金</p>
+                      <p className="text-xl font-bold">¥{property.rent_price_monthly}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">房型</p>
+                      <p className="text-xl font-bold">{property.bedrooms}室</p>
+                    </div>
+                  </div>
+                  <Button 
+                    className="w-full"
+                    onClick={() => router.push(`/dashboard/tenant/properties/${property.id}`)}
+                  >
+                    查看详情
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {/* 预约看房对话框 */}
+        <Dialog open={bookingDialogOpen} onOpenChange={setBookingDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>预约看房</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium">期望看房时间</label>
+                <Input
+                  type="datetime-local"
+                  value={bookingDate}
+                  onChange={(e) => setBookingDate(e.target.value)}
                 />
               </div>
-              <CardHeader>
-                <CardTitle className="text-xl">{property.title}</CardTitle>
-                <CardDescription className="flex items-center gap-2">
-                  <MapPin className="w-4 h-4" />
-                  {property.district}, {property.city}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  <div>
-                    <p className="text-sm text-gray-500">月租金</p>
-                    <p className="text-xl font-bold">¥{property.rent_price_monthly}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">房型</p>
-                    <p className="text-xl font-bold">{property.bedrooms}室</p>
-                  </div>
-                </div>
-                <Button 
-                  className="w-full"
-                  onClick={() => router.push(`/dashboard/tenant/properties/${property.id}`)}
-                >
-                  查看详情
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      {/* 预约看房对话框 */}
-      <Dialog open={bookingDialogOpen} onOpenChange={setBookingDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>预约看房</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium">期望看房时间</label>
-              <Input
-                type="datetime-local"
-                value={bookingDate}
-                onChange={(e) => setBookingDate(e.target.value)}
-              />
+              <div>
+                <label className="text-sm font-medium">给房东的留言</label>
+                <Textarea
+                  value={bookingNotes}
+                  onChange={(e) => setBookingNotes(e.target.value)}
+                  placeholder="请输入您的留言..."
+                />
+              </div>
+              <Button onClick={handleBookViewing} className="w-full">
+                提交预约
+              </Button>
             </div>
-            <div>
-              <label className="text-sm font-medium">给房东的留言</label>
-              <Textarea
-                value={bookingNotes}
-                onChange={(e) => setBookingNotes(e.target.value)}
-                placeholder="请输入您的留言..."
-              />
-            </div>
-            <Button onClick={handleBookViewing} className="w-full">
-              提交预约
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
+      </div>
     </div>
   )
 }

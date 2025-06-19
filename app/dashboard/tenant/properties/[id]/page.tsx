@@ -8,8 +8,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/components/ui/use-toast"
-import { Loader2, MapPin, Home, Calendar, Phone, Mail, MessageSquare } from "lucide-react"
+import { Loader2, MapPin, Home, Calendar, Phone, Mail, MessageSquare, ArrowLeft, Settings, LogOut } from "lucide-react"
 import { use } from "react"
+import Link from "next/link"
+import { Badge } from "@/components/ui/badge"
 
 interface PropertyDetail {
   id: number
@@ -25,9 +27,11 @@ interface PropertyDetail {
   bathrooms: number
   main_image_url: string
   status: string
-  landlord_info: {
+  landlord: {
     id: number
     username: string
+    phone: string
+    is_verified: boolean
   }
 }
 
@@ -43,6 +47,7 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
   const [showNewMessageDialog, setShowNewMessageDialog] = useState(false)
   const [newMessage, setNewMessage] = useState('')
   const [currentUser, setCurrentUser] = useState<{id: number, username: string} | null>(null)
+  const [user, setUser] = useState<{id: number, username: string} | null>(null)
 
   useEffect(() => {
     const token = localStorage.getItem("auth_token")
@@ -58,6 +63,17 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
     if (userInfoStr) {
       const userInfo = JSON.parse(userInfoStr)
       setCurrentUser({
+        id: userInfo.id,
+        username: userInfo.username
+      })
+    }
+  }, [])
+
+  useEffect(() => {
+    const userInfoStr = localStorage.getItem('user_info')
+    if (userInfoStr) {
+      const userInfo = JSON.parse(userInfoStr)
+      setUser({
         id: userInfo.id,
         username: userInfo.username
       })
@@ -80,14 +96,10 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
       }
       
       const data = await response.json()
+      console.log('获取到的房源数据:', data)
+
       if (data.data) {
-        setProperty({
-          ...data.data,
-          landlord_info: data.data.landlord_info || {
-            id: 0,
-            username: '未知'
-          }
-        })
+        setProperty(data.data)
       } else {
         throw new Error('房源数据格式错误')
       }
@@ -179,6 +191,16 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
         return
       }
 
+      // 检查房东信息
+      if (!property.landlord?.id) {
+        toast({
+          title: "错误",
+          description: "无法获取房东信息，请刷新页面重试",
+          variant: "destructive"
+        })
+        return
+      }
+
       const response = await fetch('http://localhost:5001/api/v1/messages', {
         method: 'POST',
         headers: {
@@ -186,13 +208,16 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          receiver_id: property.landlord_info.id,
+          receiver_id: property.landlord.id,
           content: newMessage
         })
       })
 
+      const responseData = await response.json()
+
       if (!response.ok) {
-        throw new Error('发送消息失败')
+        console.error('发送消息失败:', responseData)
+        throw new Error(responseData.message || '发送消息失败')
       }
 
       toast({
@@ -205,10 +230,26 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
       console.error('发送消息错误:', error)
       toast({
         title: "错误",
-        description: "发送消息失败",
+        description: error instanceof Error ? error.message : "发送消息失败",
         variant: "destructive"
       })
     }
+  }
+
+  const handleLogout = () => {
+    // 清除本地存储的认证信息
+    localStorage.removeItem("auth_token")
+    localStorage.removeItem("user_info")
+    localStorage.removeItem("user_role")
+    
+    // 显示退出成功提示
+    toast({
+      title: "退出成功",
+      description: "您已安全退出登录"
+    })
+    
+    // 跳转到登录页
+    router.push("/auth/login")
   }
 
   if (loading) {
@@ -228,148 +269,202 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
   }
 
   return (
-    <div className="container mx-auto p-6">
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>{property.title}</CardTitle>
-              <CardDescription>
-                <div className="flex items-center space-x-2">
-                  <MapPin className="w-4 h-4" />
-                  <span>{property.address_line1}, {property.city}</span>
-                </div>
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm font-medium">月租金</p>
-                    <p className="text-lg font-semibold">¥{property.rent_price_monthly}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">面积</p>
-                    <p className="text-lg font-semibold">{property.area_sqm}㎡</p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">户型</p>
-                    <p className="text-lg font-semibold">{property.bedrooms}室{property.bathrooms}卫</p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">类型</p>
-                    <p className="text-lg font-semibold">{property.property_type}</p>
-                  </div>
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold">房源描述</h3>
-                  <p className="text-gray-600">{property.description}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-        <div className="lg:col-span-1">
-          <Card>
-            <CardHeader>
-              <CardTitle>房东信息</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div>
-                  <p className="text-sm font-medium">姓名</p>
-                  <p className="text-sm text-gray-500">{property.landlord_info.username}</p>
-                </div>
-                <div className="flex space-x-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => setShowNewMessageDialog(true)}
-                    className="w-full"
-                  >
-                    <MessageSquare className="w-4 h-4 mr-2" />
-                    联系房东
-                  </Button>
-                  <Button
-                    onClick={() => setShowBookingDialog(true)}
-                    className="w-full"
-                  >
-                    预约看房
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-
-      {/* 预约看房对话框 */}
-      <Dialog open={showBookingDialog} onOpenChange={setShowBookingDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>预约看房</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium">预约时间</label>
-              <Input
-                type="datetime-local"
-                value={bookingDate}
-                onChange={(e) => setBookingDate(e.target.value)}
-                min={new Date().toISOString().slice(0, 16)}
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium">备注信息</label>
-              <Textarea
-                placeholder="请输入您的特殊要求或备注信息"
-                value={bookingNotes}
-                onChange={(e) => setBookingNotes(e.target.value)}
-              />
-            </div>
-            <Button className="w-full" onClick={handleBookViewing}>
-              提交预约
-            </Button>
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="bg-white border-b">
+        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <Link href="/dashboard/tenant" className="flex items-center space-x-2">
+              <Home className="h-6 w-6 text-blue-600" />
+              <span className="text-xl font-bold">智屋</span>
+            </Link>
+            <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+              租客
+            </Badge>
           </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* 发送新消息对话框 */}
-      <Dialog open={showNewMessageDialog} onOpenChange={setShowNewMessageDialog}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>发送消息</DialogTitle>
-            <DialogDescription>
-              请输入您想发送给房东的消息内容
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium">消息内容</label>
-              <Textarea
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                placeholder="请输入消息内容..."
-                className="mt-1"
-              />
-            </div>
-            <Button
-              onClick={async () => {
-                if (!newMessage.trim()) {
-                  toast({
-                    title: "错误",
-                    description: "请输入消息内容",
-                    variant: "destructive"
-                  })
-                  return
-                }
-                await sendMessage()
-              }}
+          <div className="flex items-center space-x-4">
+            <span className="text-sm text-gray-600">欢迎，{user?.username}</span>
+            <Link href="/dashboard/settings">
+              <Button variant="outline" size="sm">
+                <Settings className="h-4 w-4 mr-2" />
+                设置
+              </Button>
+            </Link>
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={handleLogout}
+              className="text-red-600 hover:text-red-700 hover:bg-red-50"
             >
-              发送
+              <LogOut className="h-4 w-4 mr-2" />
+              退出登录
             </Button>
           </div>
-        </DialogContent>
-      </Dialog>
+        </div>
+      </header>
+
+      <div className="container mx-auto p-6">
+        <div className="mb-8">
+          <div className="flex items-center gap-4 mb-4">
+            <Button
+              variant="outline"
+              onClick={() => router.back()}
+              className="flex items-center gap-2"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              返回
+            </Button>
+            <h1 className="text-3xl font-bold">房源详情</h1>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>{property.title}</CardTitle>
+                <CardDescription>
+                  <div className="flex items-center space-x-2">
+                    <MapPin className="w-4 h-4" />
+                    <span>{property.address_line1}, {property.city}</span>
+                  </div>
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm font-medium">月租金</p>
+                      <p className="text-lg font-semibold">¥{property.rent_price_monthly}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">面积</p>
+                      <p className="text-lg font-semibold">{property.area_sqm}㎡</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">户型</p>
+                      <p className="text-lg font-semibold">{property.bedrooms}室{property.bathrooms}卫</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">类型</p>
+                      <p className="text-lg font-semibold">{property.property_type}</p>
+                    </div>
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold">房源描述</h3>
+                    <p className="text-gray-600">{property.description}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+          <div className="lg:col-span-1">
+            <Card>
+              <CardHeader>
+                <CardTitle>房东信息</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-sm font-medium">姓名</p>
+                    <p className="text-sm text-gray-500">{property.landlord.username}</p>
+                  </div>
+                  <div className="flex space-x-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowNewMessageDialog(true)}
+                      className="w-full"
+                    >
+                      <MessageSquare className="w-4 h-4 mr-2" />
+                      联系房东
+                    </Button>
+                    <Button
+                      onClick={() => setShowBookingDialog(true)}
+                      className="w-full"
+                    >
+                      预约看房
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+
+        {/* 预约看房对话框 */}
+        <Dialog open={showBookingDialog} onOpenChange={setShowBookingDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>预约看房</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium">预约时间</label>
+                <Input
+                  type="datetime-local"
+                  value={bookingDate}
+                  onChange={(e) => setBookingDate(e.target.value)}
+                  min={new Date().toISOString().slice(0, 16)}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">备注信息</label>
+                <Textarea
+                  placeholder="请输入您的特殊要求或备注信息"
+                  value={bookingNotes}
+                  onChange={(e) => setBookingNotes(e.target.value)}
+                />
+              </div>
+              <Button className="w-full" onClick={handleBookViewing}>
+                提交预约
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* 发送新消息对话框 */}
+        <Dialog open={showNewMessageDialog} onOpenChange={setShowNewMessageDialog}>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>发送消息</DialogTitle>
+              <DialogDescription>
+                请输入您想发送给房东的消息内容
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium">消息内容</label>
+                <Textarea
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  placeholder="请输入消息内容..."
+                  className="mt-1"
+                />
+              </div>
+              <Button
+                onClick={async () => {
+                  console.log('发送按钮被点击')
+                  console.log('当前消息内容:', newMessage)
+                  console.log('当前房东信息:', property?.landlord)
+                  
+                  if (!newMessage.trim()) {
+                    toast({
+                      title: "错误",
+                      description: "请输入消息内容",
+                      variant: "destructive"
+                    })
+                    return
+                  }
+                  await sendMessage()
+                }}
+                className="w-full"
+              >
+                发送
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
     </div>
   )
 } 

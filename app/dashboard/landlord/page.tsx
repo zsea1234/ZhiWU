@@ -570,45 +570,46 @@ export default function LandlordDashboard() {
   }
 
   const fetchLeases = async () => {
-    console.log('=== 开始获取租约列表 ===');
-    setIsLoadingLeases(true);
     try {
-      const response = await fetch('http://localhost:5001/api/v1/leases', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
-        }
-      });
-      
-      console.log('租约列表响应状态:', response.status);
-      const data = await response.json();
-      console.log('租约列表数据:', JSON.stringify(data, null, 2));
-      
-      if (response.ok) {
-        const leases = data.data.items || [];
-        console.log('解析后的租约列表:', JSON.stringify(leases, null, 2));
-        setLeases(leases);
-        toast({
-          title: "Success",
-          description: `获取到 ${leases.length} 条租约记录`
-        });
-      } else {
-        console.error('获取租约列表失败:', data);
-        toast({
-          title: "Error",
-          description: data.message || "获取租约列表失败",
-          variant: "destructive"
-        });
+      setIsLoadingLeases(true) // 保证每次请求前都设置为 true
+      const token = localStorage.getItem('auth_token')
+      if (!token) {
+        router.push('/auth/login')
+        return
       }
+
+      const response = await fetch('http://localhost:5001/api/v1/leases', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+
+      if (response.status === 401) {
+        localStorage.removeItem('auth_token')
+        localStorage.removeItem('user_info')
+        localStorage.removeItem('user_role')
+        router.push('/auth/login')
+        return
+      }
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const data = await response.json()
+      setLeases(Array.isArray(data.data.items) ? data.data.items : [])
     } catch (error) {
-      console.error('获取租约列表时发生错误:', error);
+      console.error('Error fetching leases:', error)
       toast({
-        title: "Error",
-        description: "获取租约列表时发生错误",
+        title: "错误",
+        description: "获取租赁合同列表失败",
         variant: "destructive"
-      });
+      })
+      setLeases([]) // 出错时也要清空 leases
     } finally {
-      setIsLoadingLeases(false);
-      console.log('=== 完成获取租约列表 ===');
+      setIsLoadingLeases(false) // 关键：无论如何都要关闭 loading
     }
   }
 
