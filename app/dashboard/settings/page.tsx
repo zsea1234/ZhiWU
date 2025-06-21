@@ -53,12 +53,13 @@ export default function SettingsPage() {
 
   const fetchUserData = async () => {
     try {
-      const response = await authApi.getCurrentUser() as ApiResponse<UserData>
-      setUserData(response.data)
+      const response = await authApi.getCurrentUser<ApiResponse<UserData>>();
+      const apiResponse = response.data;
+      setUserData(apiResponse.data)
       setFormData(prev => ({
         ...prev,
-        email: response.data.email,
-        phone: response.data.phone,
+        email: apiResponse.data.email,
+        phone: apiResponse.data.phone,
       }))
     } catch (err) {
       console.error('Failed to fetch user data:', err)
@@ -73,11 +74,12 @@ export default function SettingsPage() {
     setSuccess("")
 
     try {
-      const response = await authApi.updateProfile({
+      const response = await authApi.updateProfile<ApiResponse<UserData>>({
         email: formData.email,
         phone: formData.phone,
-      }) as ApiResponse<UserData>
-      setUserData(response.data)
+      })
+      const apiResponse = response.data;
+      setUserData(apiResponse.data)
       setSuccess("个人信息更新成功")
     } catch (err: any) {
       setError(err.message || "更新失败，请稍后重试")

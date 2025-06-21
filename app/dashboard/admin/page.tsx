@@ -7,15 +7,9 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Home,
-  MessageSquare,
-  FileText,
-  CreditCard,
   Settings,
   Plus,
   Users,
-  Shield,
-  AlertTriangle,
-  BarChart,
   LogOut,
   Search,
   MoreHorizontal,
@@ -120,6 +114,7 @@ export default function AdminDashboard() {
   const [verificationNotes, setVerificationNotes] = useState("")
   const [verifyDialogOpen, setVerifyDialogOpen] = useState(false)
   const [totalItems, setTotalItems] = useState(0)
+  const [activeTab, setActiveTab] = useState("users")
 
   // 新增用户表单数据
   const [newUserData, setNewUserData] = useState({
@@ -212,7 +207,7 @@ export default function AdminDashboard() {
         console.log("获取当前用户信息...")
         const response = await authApi.getCurrentUser()
         console.log("用户信息:", response)
-        setUser(response.data)
+        setUser(response.data.data)
         setLoading(false)
       } catch (error) {
         console.error("认证错误:", error)
@@ -248,8 +243,7 @@ export default function AdminDashboard() {
     }
 
     // 应用角色筛选 (如果后端 fetchUsers 已经根据角色过滤，这里可能不需要再次过滤)
-    // 如果后端 fetchUsers 获取的是所有角色，则这里需要应用角色过滤
-    // 假设后端 fetchUsers 根据 selectedRole 进行了初步过滤，这里主要处理搜索
+    // 如果后端 fetchUsers 获取的是所有角色，则这里主要处理搜索
     // 如果需要前端进行角色过滤，请 uncomment 下面的代码块
     /*
     if (selectedRole !== "all") {
@@ -377,6 +371,7 @@ export default function AdminDashboard() {
 
   // 获取房源列表
   const fetchProperties = async () => {
+    console.log('🚀 fetchProperties 函数被调用!')
     try {
       setLoading(true)
       console.log('开始获取房源列表，当前筛选条件:', filters, '页码:', page)
@@ -385,10 +380,31 @@ export default function AdminDashboard() {
         page,
         page_size: 10
       })
-      console.log('获取到的房源数据:', response)
-      setProperties(response.items)
-      setTotalPages(response.pages)
-      setTotalItems(response.total)
+      console.log('完整房源 response:', response)
+      console.log('response类型:', typeof response)
+      console.log('response是否为数组:', Array.isArray(response))
+      console.log('response的所有键:', Object.keys(response))
+      
+      // API层已经处理了数据结构，response应该直接是PaginatedProperties格式
+      const items = response.items || [];
+      const totalPages = response.pages || 1;
+      const totalItems = response.total || 0;
+      
+      console.log('房源列表items:', items)
+      console.log('totalPages:', totalPages, 'totalItems:', totalItems)
+      
+      // 检查每个房源对象是否包含id字段
+      items.forEach((property: any, index: number) => {
+        console.log(`房源 ${index}:`, property)
+        console.log(`房源 ${index} 的所有键:`, Object.keys(property))
+        
+        // 直接使用后端返回的数据，不修改
+        console.log(`房源 ${index} 保持原始数据`)
+      })
+      
+      setProperties(items)
+      setTotalPages(totalPages)
+      setTotalItems(totalItems)
     } catch (error) {
       console.error('获取房源列表失败:', error)
       toast({
@@ -403,29 +419,44 @@ export default function AdminDashboard() {
 
   // 处理房源验证
   const handleVerifyProperty = async (isVerified: boolean) => {
-    if (!selectedProperty) return
-
+    console.log('handleVerifyProperty called, selectedProperty:', selectedProperty)
+    if (!selectedProperty || selectedProperty.id == null) {
+      console.log('审核失败，selectedProperty 或 id 无效:', selectedProperty)
+      toast({ title: "审核失败", description: "房源ID无效", variant: "destructive" });
+      return;
+    }
+    
+    // 检查是否使用临时标识符
+    if ((selectedProperty as any).temp_identifier) {
+      console.log('房源使用临时标识符，无法进行真实审核')
+      toast({ 
+        title: "无法审核", 
+        description: "房源使用临时标识符，无法进行真实审核。请修复后端API，确保返回正确的房源ID字段。",
+        variant: "destructive" 
+      })
+      return;
+    }
+    
     try {
-      console.log('开始审核房源:', selectedProperty.id, '审核结果:', isVerified)
+      console.log('开始审核房源:', selectedProperty.id, '审核结果:', isVerified, '备注:', verificationNotes)
       await adminPropertiesApi.verifyProperty(selectedProperty.id, {
         is_verified_by_admin: isVerified,
         admin_notes: verificationNotes
       })
-      
+      console.log('审核请求已发送，等待刷新房源列表...')
       // 更新房源列表
       await fetchProperties()
-      
+      console.log('房源列表已刷新')
       // 关闭对话框
       setVerifyDialogOpen(false)
       setSelectedProperty(null)
       setVerificationNotes('')
-      
       toast({
         title: "审核成功",
         description: `房源已${isVerified ? '通过' : '拒绝'}审核`,
       })
     } catch (error) {
-      console.error('审核房源失败:', error)
+      console.error('审核房源失败:', error, 'selectedProperty:', selectedProperty)
       toast({
         title: "审核失败",
         description: error instanceof Error ? error.message : "未知错误",
@@ -440,6 +471,7 @@ export default function AdminDashboard() {
     console.log('用户状态:', user)
     if (mounted && user) {
       console.log('开始获取房源列表...')
+      console.log('fetchProperties函数存在:', typeof fetchProperties)
       fetchProperties()
     } else {
       console.log('跳过获取房源列表:', { mounted, user: !!user })
@@ -527,7 +559,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* Quick Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
@@ -544,38 +576,17 @@ export default function AdminDashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">总房源数</p>
-                  <p className="text-2xl font-bold">567</p>
+                  <p className="text-2xl font-bold">{totalItems}</p>
                 </div>
                 <Home className="h-8 w-8 text-green-600" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">活跃租约</p>
-                  <p className="text-2xl font-bold">345</p>
-                </div>
-                <FileText className="h-8 w-8 text-purple-600" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">待处理投诉</p>
-                  <p className="text-2xl font-bold text-red-600">12</p>
-                </div>
-                <AlertTriangle className="h-8 w-8 text-red-600" />
               </div>
             </CardContent>
           </Card>
         </div>
 
         {/* Main Content */}
-        <Tabs defaultValue="overview" className="space-y-6" onValueChange={(value) => {
+        <Tabs value={activeTab} className="space-y-6" onValueChange={(value) => {
+          setActiveTab(value);
           console.log('标签页切换:', value)
           if (value === 'properties') {
             console.log('切换到房源管理标签页')
@@ -596,67 +607,9 @@ export default function AdminDashboard() {
           }
         }}>
           <TabsList>
-            <TabsTrigger value="overview">概览</TabsTrigger>
             <TabsTrigger value="users">用户管理</TabsTrigger>
             <TabsTrigger value="properties">房源管理</TabsTrigger>
-            <TabsTrigger value="reports">报表统计</TabsTrigger>
-            <TabsTrigger value="complaints">投诉管理</TabsTrigger>
-            <TabsTrigger value="system">系统监控</TabsTrigger>
           </TabsList>
-
-          <TabsContent value="overview">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>系统概览</CardTitle>
-                  <CardDescription>平台运营数据</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="flex justify-between">
-                      <span>今日新增用户</span>
-                      <span className="font-medium">23</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>今日新增房源</span>
-                      <span className="font-medium">8</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>今日成交租约</span>
-                      <span className="font-medium">5</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>系统运行时间</span>
-                      <span className="font-medium">99.9%</span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>待处理事项</CardTitle>
-                  <CardDescription>需要管理员处理的事项</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {[
-                      { type: "投诉", content: "用户投诉房源虚假信息", urgent: true },
-                      { type: "审核", content: "5个房源待审核", urgent: false },
-                      { type: "系统", content: "数据库性能告警", urgent: true },
-                    ].map((item, i) => (
-                      <div key={i} className="flex items-start space-x-3">
-                        <Badge variant={item.urgent ? "destructive" : "secondary"} className="mt-1">
-                          {item.type}
-                        </Badge>
-                        <p className="text-sm flex-1">{item.content}</p>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
 
           <TabsContent value="users">
             <Card>
@@ -930,6 +883,16 @@ export default function AdminDashboard() {
               <CardHeader>
                 <CardTitle>房源管理</CardTitle>
                 <CardDescription>审核和管理平台房源信息</CardDescription>
+                <Button 
+                  onClick={() => {
+                    console.log('手动刷新房源列表')
+                    fetchProperties()
+                  }}
+                  size="sm"
+                  variant="outline"
+                >
+                  刷新列表
+                </Button>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
@@ -942,14 +905,14 @@ export default function AdminDashboard() {
                       className="max-w-xs"
                     />
                     <Select
-                      value={filters.status || ''}
-                      onValueChange={(value) => setFilters((prev: PropertyFilters) => ({ ...prev, status: value }))}
+                      value={filters.status || 'all'}
+                      onValueChange={(value) => setFilters((prev: PropertyFilters) => ({ ...prev, status: value === 'all' ? undefined : value }))}
                     >
                       <SelectTrigger className="w-[180px]">
                         <SelectValue placeholder="房源状态" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">全部状态</SelectItem>
+                        <SelectItem value="all">全部状态</SelectItem>
                         <SelectItem value="vacant">空置</SelectItem>
                         <SelectItem value="rented">已出租</SelectItem>
                         <SelectItem value="under_maintenance">维护中</SelectItem>
@@ -958,14 +921,14 @@ export default function AdminDashboard() {
                       </SelectContent>
                     </Select>
                     <Select
-                      value={filters.verification_status || ''}
-                      onValueChange={(value) => setFilters((prev: PropertyFilters) => ({ ...prev, verification_status: value }))}
+                      value={filters.verification_status || 'all'}
+                      onValueChange={(value) => setFilters((prev: PropertyFilters) => ({ ...prev, verification_status: value === 'all' ? undefined : value }))}
                     >
                       <SelectTrigger className="w-[180px]">
                         <SelectValue placeholder="审核状态" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">全部状态</SelectItem>
+                        <SelectItem value="all">全部状态</SelectItem>
                         <SelectItem value="verified">已审核</SelectItem>
                         <SelectItem value="unverified">未审核</SelectItem>
                       </SelectContent>
@@ -977,49 +940,84 @@ export default function AdminDashboard() {
                     <div className="flex justify-center items-center h-64">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
                     </div>
-                  ) : properties.length > 0 ? (
-                    <div className="space-y-4">
-                      {properties.map((property) => (
-                        <Card key={property.id}>
-                          <CardHeader>
-                            <CardTitle>{property.title}</CardTitle>
-                            <CardDescription>
-                              {property.address_line1}, {property.city}
-                            </CardDescription>
-                          </CardHeader>
-                          <CardContent>
-                            <div className="grid grid-cols-2 gap-4">
-                              <div>
-                                <p>月租金: ¥{property.rent_price_monthly}</p>
-                                <p>押金: ¥{property.deposit_amount}</p>
-                                <p>面积: {property.area_sqm}㎡</p>
-                                <p>状态: {property.status}</p>
-                              </div>
-                              <div>
-                                <p>房东: {property.landlord_info?.username}</p>
-                                <p>联系方式: {property.landlord_info?.phone || property.landlord_info?.email}</p>
-                                <p>审核状态: {property.is_verified_by_admin ? '已审核' : '未审核'}</p>
-                                {property.admin_notes && <p>审核备注: {property.admin_notes}</p>}
-                              </div>
-                            </div>
-                          </CardContent>
-                          <CardFooter>
-                            <Button
-                              onClick={() => {
-                                setSelectedProperty(property)
-                                setVerifyDialogOpen(true)
-                              }}
-                            >
-                              审核
-                            </Button>
-                          </CardFooter>
-                        </Card>
-                      ))}
-                    </div>
                   ) : (
-                    <div className="text-center py-8">
-                      <p className="text-gray-500">暂无房源数据</p>
-                      <p className="text-sm text-gray-400">当前筛选条件: {JSON.stringify(filters)}</p>
+                    <div className="rounded-md border">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>标题</TableHead>
+                            <TableHead>地址</TableHead>
+                            <TableHead>城市</TableHead>
+                            <TableHead>月租金</TableHead>
+                            <TableHead>状态</TableHead>
+                            <TableHead>房东</TableHead>
+                            <TableHead>审核状态</TableHead>
+                            <TableHead className="text-right">操作</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {properties.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                                暂无房源数据
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            properties.map((property, idx) => (
+                              <TableRow key={property.id || idx}>
+                                <TableCell>{property.title}</TableCell>
+                                <TableCell>{property.address_line1}</TableCell>
+                                <TableCell>{property.city}</TableCell>
+                                <TableCell>¥{property.rent_price_monthly}</TableCell>
+                                <TableCell>{property.status}</TableCell>
+                                <TableCell>{property.landlord_info?.username || '-'}</TableCell>
+                                <TableCell>{property.is_verified_by_admin ? '已审核' : '未审核'}</TableCell>
+                                <TableCell className="text-right">
+                                  <Button
+                                    size="sm"
+                                    onClick={() => {
+                                      console.log('点击审核按钮，property:', property)
+                                      console.log('property完整对象:', JSON.stringify(property, null, 2))
+                                      
+                                      // 检查是否有id字段
+                                      if (property.id) {
+                                        console.log('设置 selectedProperty:', property)
+                                        setSelectedProperty(property)
+                                        setTimeout(() => {
+                                          console.log('selectedProperty after set:', property)
+                                        }, 0)
+                                        setVerifyDialogOpen(true)
+                                      } else {
+                                        // 临时解决方案：使用title和address_line1的组合作为标识符
+                                        console.log('房源缺少id字段，使用临时标识符')
+                                        const tempProperty = {
+                                          ...property,
+                                          id: `${property.title}_${property.address_line1}`.replace(/\s+/g, '_'),
+                                          temp_identifier: true
+                                        } as any
+                                        console.log('临时标识符:', tempProperty.id)
+                                        setSelectedProperty(tempProperty)
+                                        setTimeout(() => {
+                                          console.log('selectedProperty after set:', tempProperty)
+                                        }, 0)
+                                        setVerifyDialogOpen(true)
+                                        
+                                        toast({ 
+                                          title: "使用临时标识符", 
+                                          description: "房源缺少ID字段，使用临时标识符进行审核",
+                                          variant: "default" 
+                                        })
+                                      }
+                                    }}
+                                  >
+                                    审核
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          )}
+                        </TableBody>
+                      </Table>
                     </div>
                   )}
 
@@ -1096,63 +1094,6 @@ export default function AdminDashboard() {
                 </div>
               </DialogContent>
             </Dialog>
-          </TabsContent>
-
-          <TabsContent value="reports">
-            <Card>
-              <CardHeader>
-                <CardTitle>报表统计</CardTitle>
-                <CardDescription>平台运营数据统计</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-8">
-                  <BarChart className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-600 mb-4">查看平台运营数据报表</p>
-                  <Button>
-                    <Plus className="h-4 w-4 mr-2" />
-                    生成报表
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="complaints">
-            <Card>
-              <CardHeader>
-                <CardTitle>投诉管理</CardTitle>
-                <CardDescription>处理用户投诉</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-8">
-                  <AlertTriangle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-600 mb-4">处理用户投诉和反馈</p>
-                  <Button>
-                    <Plus className="h-4 w-4 mr-2" />
-                    查看投诉
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="system">
-            <Card>
-              <CardHeader>
-                <CardTitle>系统监控</CardTitle>
-                <CardDescription>监控系统运行状态</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-8">
-                  <Shield className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-600 mb-4">监控系统性能和运行状态</p>
-                  <Button>
-                    <Plus className="h-4 w-4 mr-2" />
-                    查看监控
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
           </TabsContent>
         </Tabs>
       </div>
