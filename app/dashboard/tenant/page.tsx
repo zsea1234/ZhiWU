@@ -195,6 +195,16 @@ export default function TenantDashboard() {
   const [selectedReceiver, setSelectedReceiver] = useState<number | null>(null)
   const [currentUser, setCurrentUser] = useState<{id: number, username: string} | null>(null)
   const [isLoadingChatUsers, setIsLoadingChatUsers] = useState(false)
+  const [createLeaseDialogOpen, setCreateLeaseDialogOpen] = useState(false)
+  const [selectedBookingForLease, setSelectedBookingForLease] = useState<Booking | null>(null)
+  const [newLeaseData, setNewLeaseData] = useState({
+    start_date: '',
+    end_date: '',
+    monthly_rent_amount: '',
+    deposit_amount: '',
+    additional_terms: '',
+    payment_due_day_of_month: 1
+  })
 
   // 统计数据
   const stats = {
@@ -673,6 +683,98 @@ export default function TenantDashboard() {
       toast({
         title: "错误",
         description: "取消维修申请失败",
+        variant: "destructive"
+      })
+    }
+  }
+
+  // 创建租赁合同
+  const handleCreateLease = async () => {
+    if (!selectedBookingForLease) {
+      toast({
+        title: "错误",
+        description: "请选择预约记录",
+        variant: "destructive"
+      })
+      return
+    }
+
+    try {
+      const token = localStorage.getItem('auth_token')
+      if (!token) {
+        toast({
+          title: "错误",
+          description: "请先登录",
+          variant: "destructive"
+        })
+        return
+      }
+
+      // 验证必填字段
+      if (!newLeaseData.start_date || !newLeaseData.end_date || !newLeaseData.monthly_rent_amount) {
+        toast({
+          title: "错误",
+          description: "请填写完整的合同信息",
+          variant: "destructive"
+        })
+        return
+      }
+
+      const leaseData = {
+        property_id: selectedBookingForLease.property_id,
+        tenant_id: currentUser?.id,
+        start_date: newLeaseData.start_date,
+        end_date: newLeaseData.end_date,
+        monthly_rent_amount: parseFloat(newLeaseData.monthly_rent_amount),
+        deposit_amount: parseFloat(newLeaseData.deposit_amount) || parseFloat(newLeaseData.monthly_rent_amount),
+        additional_terms: newLeaseData.additional_terms || null,
+        payment_due_day_of_month: newLeaseData.payment_due_day_of_month,
+        status: 'pending_landlord_signature' // 明确设置为待房东签署状态
+      }
+
+      console.log('创建租赁合同数据:', leaseData)
+
+      const response = await fetch('http://localhost:5001/api/v1/leases', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(leaseData)
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.message || '创建租赁合同失败')
+      }
+
+      const data = await response.json()
+      console.log('租赁合同创建成功:', data)
+
+      toast({
+        title: "成功",
+        description: "租赁合同创建成功，等待房东签署"
+      })
+
+      // 关闭对话框并重置数据
+      setCreateLeaseDialogOpen(false)
+      setSelectedBookingForLease(null)
+      setNewLeaseData({
+        start_date: '',
+        end_date: '',
+        monthly_rent_amount: '',
+        deposit_amount: '',
+        additional_terms: '',
+        payment_due_day_of_month: 1
+      })
+
+      // 刷新租赁合同列表
+      fetchLeases()
+    } catch (error) {
+      console.error('创建租赁合同错误:', error)
+      toast({
+        title: "错误",
+        description: error instanceof Error ? error.message : "创建租赁合同失败",
         variant: "destructive"
       })
     }
@@ -1223,6 +1325,25 @@ export default function TenantDashboard() {
                               <Eye className="w-4 h-4 mr-2" />
                               查看房源
                             </Button>
+                            {booking.status === 'CONFIRMED_BY_LANDLORD' && (
+                              <Button
+                                variant="default"
+                                onClick={() => {
+                                  setSelectedBookingForLease(booking)
+                                  setCreateLeaseDialogOpen(true)
+                                }}
+                                disabled={leases.some(lease => 
+                                  lease.property_id === booking.property_id && 
+                                  lease.status === 'pending_landlord_signature'
+                                )}
+                              >
+                                <FileText className="w-4 h-4 mr-2" />
+                                {leases.some(lease => 
+                                  lease.property_id === booking.property_id && 
+                                  lease.status === 'pending_landlord_signature'
+                                ) ? '已发起合同' : '发起合同'}
+                              </Button>
+                            )}
                             {(booking.status === 'PENDING_CONFIRMATION' || booking.status === 'CONFIRMED_BY_LANDLORD') && (
                               <Button
                                 variant="destructive"
@@ -1278,12 +1399,15 @@ export default function TenantDashboard() {
                               查看合同
                             </Button>
                           )}
-                          {lease.status === 'pending_tenant_signature' && (
-                            <Button
-                              onClick={() => handleSignLease(lease.id)}
-                            >
-                              签署合同
-                            </Button>
+                          {lease.status === 'pending_landlord_signature' && (
+                            <Badge variant="secondary">
+                              等待房东签署
+                            </Badge>
+                          )}
+                          {lease.status === 'active' && (
+                            <Badge variant="default">
+                              合同生效
+                            </Badge>
                           )}
                         </div>
                       </div>
@@ -1748,6 +1872,138 @@ export default function TenantDashboard() {
                 <h3 className="font-medium">房东信息</h3>
                 <p className="text-sm text-gray-500">姓名：{selectedBooking.landlord?.username || '未知房东'}</p>
                 <p className="text-sm text-gray-500">电话：{selectedBooking.landlord?.phone || '未知电话'}</p>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* 创建租赁合同对话框 */}
+      <Dialog open={createLeaseDialogOpen} onOpenChange={setCreateLeaseDialogOpen}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>创建租赁合同</DialogTitle>
+            <DialogDescription>
+              为已确认的预约创建租赁合同，填写合同详细信息
+            </DialogDescription>
+          </DialogHeader>
+          {selectedBookingForLease && (
+            <div className="space-y-4">
+              <div className="p-4 bg-gray-50 rounded-lg">
+                <h3 className="font-medium mb-2">房源信息</h3>
+                <p className="text-sm text-gray-600">{selectedBookingForLease.property?.title}</p>
+                <p className="text-sm text-gray-600">
+                  {selectedBookingForLease.property?.address_line1}, {selectedBookingForLease.property?.city}
+                </p>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium">租期开始日期 *</label>
+                  <Input
+                    type="date"
+                    value={newLeaseData.start_date}
+                    onChange={(e) => setNewLeaseData({
+                      ...newLeaseData,
+                      start_date: e.target.value
+                    })}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">租期结束日期 *</label>
+                  <Input
+                    type="date"
+                    value={newLeaseData.end_date}
+                    onChange={(e) => setNewLeaseData({
+                      ...newLeaseData,
+                      end_date: e.target.value
+                    })}
+                    className="mt-1"
+                  />
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium">月租金 (元) *</label>
+                  <Input
+                    type="number"
+                    value={newLeaseData.monthly_rent_amount}
+                    onChange={(e) => setNewLeaseData({
+                      ...newLeaseData,
+                      monthly_rent_amount: e.target.value
+                    })}
+                    placeholder="请输入月租金"
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">押金 (元)</label>
+                  <Input
+                    type="number"
+                    value={newLeaseData.deposit_amount}
+                    onChange={(e) => setNewLeaseData({
+                      ...newLeaseData,
+                      deposit_amount: e.target.value
+                    })}
+                    placeholder="默认等于月租金"
+                    className="mt-1"
+                  />
+                </div>
+              </div>
+              
+              <div>
+                <label className="text-sm font-medium">每月付款日</label>
+                <Input
+                  type="number"
+                  min="1"
+                  max="31"
+                  value={newLeaseData.payment_due_day_of_month}
+                  onChange={(e) => setNewLeaseData({
+                    ...newLeaseData,
+                    payment_due_day_of_month: parseInt(e.target.value) || 1
+                  })}
+                  className="mt-1"
+                />
+                <p className="text-xs text-gray-500 mt-1">每月几号支付租金，默认为1号</p>
+              </div>
+              
+              <div>
+                <label className="text-sm font-medium">附加条款</label>
+                <Textarea
+                  value={newLeaseData.additional_terms}
+                  onChange={(e) => setNewLeaseData({
+                    ...newLeaseData,
+                    additional_terms: e.target.value
+                  })}
+                  placeholder="请输入额外的合同条款..."
+                  rows={4}
+                  className="mt-1"
+                />
+              </div>
+              
+              <div className="flex justify-end gap-4 pt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setCreateLeaseDialogOpen(false)
+                    setSelectedBookingForLease(null)
+                    setNewLeaseData({
+                      start_date: '',
+                      end_date: '',
+                      monthly_rent_amount: '',
+                      deposit_amount: '',
+                      additional_terms: '',
+                      payment_due_day_of_month: 1
+                    })
+                  }}
+                >
+                  取消
+                </Button>
+                <Button onClick={handleCreateLease}>
+                  创建合同
+                </Button>
               </div>
             </div>
           )}
