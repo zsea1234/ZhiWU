@@ -200,7 +200,7 @@ export default function TenantDashboard() {
     totalBookings: Array.isArray(bookings) ? bookings.length : 0,
     activeLeases: Array.isArray(leases) ? leases.filter(l => l.status === 'active').length : 0,
     pendingMaintenance: Array.isArray(maintenanceRequests) ? maintenanceRequests.filter(m => m.status === 'PENDING_ASSIGNMENT').length : 0,
-    unreadMessages: 0
+    unreadMessages: unreadCount
   }
 
   useEffect(() => {
@@ -707,42 +707,88 @@ export default function TenantDashboard() {
       console.log('开始获取聊天用户列表...')
       console.log('当前用户:', currentUser)
 
-      // 获取所有活跃租约
-      const leasesResponse = await fetch('http://localhost:5001/api/v1/leases?status=active', {
+      // 首先获取聊天用户ID列表
+      const chatUserIdsResponse = await fetch('http://localhost:5001/api/v1/messages/chat-user-ids', {
         headers: {
           'Authorization': `Bearer ${token}`
         }
       })
 
-      if (!leasesResponse.ok) {
-        throw new Error('获取租约信息失败')
+      if (!chatUserIdsResponse.ok) {
+        throw new Error('获取聊天用户ID列表失败')
       }
 
-      const leasesData = await leasesResponse.json()
-      console.log('获取到的租约数据:', leasesData)
+      const chatUserIdsData = await chatUserIdsResponse.json()
+      console.log('获取到的聊天用户ID列表:', chatUserIdsData)
 
-      // 从租约中提取房东信息
-      const chatUsers = new Map<number, { id: number; username: string }>()
+      if (!chatUserIdsData.success || !chatUserIdsData.data || !chatUserIdsData.data.user_ids) {
+        console.log('没有聊天用户ID列表')
+        setChatUsers([])
+        return
+      }
+
+      const userIds = chatUserIdsData.data.user_ids
       
-      if (leasesData.success && leasesData.data && leasesData.data.items) {
-        leasesData.data.items.forEach((lease: any) => {
-          if (lease.landlord_info) {
-            chatUsers.set(lease.landlord_info.id, {
-              id: lease.landlord_info.id,
-              username: lease.landlord_info.username
+      // 由于后端可能没有提供获取用户信息的API，我们使用简化的方法
+      // 或者从租约信息中获取房东信息作为备选方案
+      let chatUsersWithDetails: Array<{id: number, username: string}> = []
+      
+      // 尝试从租约信息中获取房东信息
+      try {
+        const leasesResponse = await fetch('http://localhost:5001/api/v1/leases?status=active', {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        })
+        
+        if (leasesResponse.ok) {
+          const leasesData = await leasesResponse.json()
+          if (leasesData.success && leasesData.data && leasesData.data.items) {
+            const landlordMap = new Map<number, {id: number, username: string}>()
+            leasesData.data.items.forEach((lease: any) => {
+              if (lease.landlord_info) {
+                landlordMap.set(lease.landlord_info.id, {
+                  id: lease.landlord_info.id,
+                  username: lease.landlord_info.username
+                })
+              }
+            })
+            
+            // 将聊天用户ID与房东信息匹配
+            userIds.forEach((userId: number) => {
+              if (landlordMap.has(userId)) {
+                const userInfo = landlordMap.get(userId)
+                if (userInfo) {
+                  chatUsersWithDetails.push(userInfo)
+                }
+              } else {
+                // 如果没有找到房东信息，使用默认显示
+                chatUsersWithDetails.push({
+                  id: userId,
+                  username: `用户${userId}`
+                })
+              }
             })
           }
+        }
+      } catch (error) {
+        console.error('获取租约信息失败，使用默认用户显示:', error)
+        // 如果获取租约信息失败，使用默认显示
+        userIds.forEach((userId: number) => {
+          chatUsersWithDetails.push({
+            id: userId,
+            username: `用户${userId}`
+          })
         })
       }
       
-      const chatUsersList = Array.from(chatUsers.values())
-      console.log('最终的聊天用户列表:', chatUsersList)
-      setChatUsers(chatUsersList)
+      console.log('最终的聊天用户列表:', chatUsersWithDetails)
+      setChatUsers(chatUsersWithDetails)
 
       // 如果有聊天用户，默认选择第一个
-      if (chatUsersList.length > 0 && !selectedChatUser) {
-        setSelectedChatUser(chatUsersList[0].id)
-        fetchMessages(chatUsersList[0].id)
+      if (chatUsersWithDetails.length > 0 && !selectedChatUser) {
+        setSelectedChatUser(chatUsersWithDetails[0].id)
+        fetchMessages(chatUsersWithDetails[0].id)
       }
     } catch (error) {
       console.error('获取聊天对象列表错误:', error)
@@ -785,10 +831,12 @@ export default function TenantDashboard() {
       console.log('获取到的对话消息数据:', data)
       
       if (data.success && data.data) {
-        // 确保data.data是数组
+        // 确保data.data是数组，并按时间正序排列（最新的在底部）
         const messagesList = Array.isArray(data.data) ? data.data : []
-        console.log('处理后的消息列表:', messagesList)
-        setMessages(messagesList)
+        // 后端返回的是倒序（最新的在前），我们需要反转成正序（最新的在后）
+        const sortedMessages = messagesList.reverse()
+        console.log('处理后的消息列表（正序）:', sortedMessages)
+        setMessages(sortedMessages)
         // 更新未读消息数
         fetchUnreadCount()
       } else {
@@ -821,9 +869,17 @@ export default function TenantDashboard() {
       }
       
       const data = await response.json()
-      setUnreadCount(data.data.unread_count)
+      console.log('未读消息数数据:', data)
+      
+      if (data.success && data.data && typeof data.data.unread_count === 'number') {
+        setUnreadCount(data.data.unread_count)
+      } else {
+        console.error('未读消息数数据格式错误:', data)
+        setUnreadCount(0)
+      }
     } catch (error) {
       console.error('获取未读消息数错误:', error)
+      setUnreadCount(0)
     }
   }
 
@@ -863,8 +919,21 @@ export default function TenantDashboard() {
       console.log('发送消息成功:', data)
 
       if (data.success && data.data) {
-        setMessages(prev => [data.data, ...prev])
+        // 将新消息添加到消息列表的末尾
+        setMessages(prev => [...prev, data.data])
         setNewMessage('')
+        
+        // 立即滚动到底部
+        setTimeout(() => {
+          const messagesContainer = document.getElementById('messages-container')
+          if (messagesContainer) {
+            messagesContainer.scrollTo({
+              top: messagesContainer.scrollHeight,
+              behavior: 'smooth'
+            })
+          }
+        }, 50)
+        
         // 发送成功后刷新聊天对象列表和未读消息数
         fetchChatUsers()
         fetchUnreadCount()
@@ -885,6 +954,14 @@ export default function TenantDashboard() {
       console.log('组件加载，开始获取聊天对象列表')
       fetchChatUsers()
       fetchUnreadCount()
+      
+      // 设置定时器，每30秒刷新一次未读消息数
+      const interval = setInterval(() => {
+        fetchUnreadCount()
+      }, 30000)
+      
+      // 清理定时器
+      return () => clearInterval(interval)
     }
   }, [currentUser])
 
@@ -896,24 +973,50 @@ export default function TenantDashboard() {
     }
   }, [selectedChatUser])
 
+  // 当消息列表更新时，自动滚动到底部
+  useEffect(() => {
+    if (messages.length > 0) {
+      const messagesContainer = document.getElementById('messages-container')
+      if (messagesContainer) {
+        // 使用setTimeout确保DOM更新完成后再滚动
+        setTimeout(() => {
+          messagesContainer.scrollTo({
+            top: messagesContainer.scrollHeight,
+            behavior: 'smooth'
+          })
+        }, 100)
+      }
+    }
+  }, [messages])
+
   // 渲染消息列表
   const renderMessages = () => {
-    return messages.map((message) => (
-      <div
-        key={message.id}
-        className={`flex ${message.sender_id === currentUser?.id ? "justify-end" : "justify-start"}`}
-      >
+    return messages.map((message) => {
+      const isOwnMessage = message.sender_id === currentUser?.id
+      const senderName = isOwnMessage ? '我' : (message.sender?.username || '未知用户')
+      
+      return (
         <div
-          className={`max-w-[70%] p-3 rounded-lg ${
-            message.sender_id === currentUser?.id ? "bg-blue-100" : "bg-gray-100"
-          }`}
+          key={message.id}
+          className={`flex ${isOwnMessage ? "justify-end" : "justify-start"}`}
         >
-          <p className="font-medium">{message.sender_id === currentUser?.id ? '我' : message.sender?.username}</p>
-          <p className="text-sm">{message.content}</p>
-          <p className="text-xs text-gray-500 mt-1">{new Date(message.sent_at).toLocaleString()}</p>
+          <div
+            className={`max-w-[70%] p-3 rounded-lg ${
+              isOwnMessage ? "bg-blue-100" : "bg-gray-100"
+            }`}
+          >
+            <p className="font-medium text-sm text-gray-600">{senderName}</p>
+            <p className="text-sm mt-1">{message.content}</p>
+            <p className="text-xs text-gray-500 mt-1">
+              {new Date(message.sent_at).toLocaleString()}
+              {!isOwnMessage && !message.is_read_by_receiver && (
+                <span className="ml-2 text-blue-500">未读</span>
+              )}
+            </p>
+          </div>
         </div>
-      </div>
-    ))
+      )
+    })
   }
 
   const handleLogout = () => {
@@ -1447,7 +1550,7 @@ export default function TenantDashboard() {
                 <CardContent>
                   {selectedChatUser ? (
                     <div className="flex flex-col h-[500px]">
-                      <div className="flex-1 overflow-y-auto space-y-4 mb-4">
+                      <div className="flex-1 overflow-y-auto space-y-4 mb-4 p-2" id="messages-container">
                         {messages.length === 0 ? (
                           <div className="text-center py-4">
                             <p className="text-gray-500">暂无消息记录</p>
@@ -1527,11 +1630,49 @@ export default function TenantDashboard() {
                         })
                         return
                       }
-                      setSelectedChatUser(selectedReceiver)
-                      await sendMessage()
-                      setShowNewMessageDialog(false)
-                      setSelectedReceiver(null)
-                      setNewMessage('')
+                      
+                      try {
+                        const token = localStorage.getItem('auth_token')
+                        const response = await fetch('http://localhost:5001/api/v1/messages', {
+                          method: 'POST',
+                          headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                          },
+                          body: JSON.stringify({
+                            receiver_id: selectedReceiver,
+                            content: newMessage.trim()
+                          })
+                        })
+
+                        if (!response.ok) {
+                          const errorData = await response.json()
+                          throw new Error(errorData.message || '发送消息失败')
+                        }
+
+                        const data = await response.json()
+                        if (data.success) {
+                          toast({
+                            title: "成功",
+                            description: "消息发送成功"
+                          })
+                          setSelectedChatUser(selectedReceiver)
+                          // 发送成功后获取最新的消息列表
+                          await fetchMessages(selectedReceiver)
+                          setShowNewMessageDialog(false)
+                          setSelectedReceiver(null)
+                          setNewMessage('')
+                          fetchChatUsers()
+                          fetchUnreadCount()
+                        }
+                      } catch (error) {
+                        console.error('发送消息错误:', error)
+                        toast({
+                          title: "错误",
+                          description: error instanceof Error ? error.message : "发送消息失败",
+                          variant: "destructive"
+                        })
+                      }
                     }}
                   >
                     发送
