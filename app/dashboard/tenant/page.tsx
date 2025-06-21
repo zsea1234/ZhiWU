@@ -194,6 +194,7 @@ export default function TenantDashboard() {
   const [showNewMessageDialog, setShowNewMessageDialog] = useState(false)
   const [selectedReceiver, setSelectedReceiver] = useState<number | null>(null)
   const [currentUser, setCurrentUser] = useState<{id: number, username: string} | null>(null)
+  const [isLoadingChatUsers, setIsLoadingChatUsers] = useState(false)
 
   // 统计数据
   const stats = {
@@ -691,9 +692,51 @@ export default function TenantDashboard() {
     return <Badge variant={statusInfo.variant as any}>{statusInfo.label}</Badge>
   }
 
+  // 批量获取用户信息
+  const fetchUsersInfo = async (userIds: number[], token: string): Promise<Array<{id: number, username: string}>> => {
+    const usersInfo: Array<{id: number, username: string}> = []
+    
+    // 使用Promise.all并发获取用户信息，提高性能
+    const userPromises = userIds.map(async (userId) => {
+      try {
+        const userResponse = await fetch(`http://localhost:5001/api/v1/users/${userId}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        })
+        
+        if (userResponse.ok) {
+          const userData = await userResponse.json()
+          if (userData.success && userData.data) {
+            return {
+              id: userData.data.id,
+              username: userData.data.username
+            }
+          }
+        }
+        // 如果获取失败，返回默认信息
+        return {
+          id: userId,
+          username: `用户${userId}`
+        }
+      } catch (error) {
+        console.error(`获取用户${userId}信息错误:`, error)
+        // 如果出错，返回默认信息
+        return {
+          id: userId,
+          username: `用户${userId}`
+        }
+      }
+    })
+    
+    const results = await Promise.all(userPromises)
+    return results
+  }
+
   // 获取聊天对象列表
   const fetchChatUsers = async () => {
     try {
+      setIsLoadingChatUsers(true)
       const token = localStorage.getItem('auth_token')
       if (!token || !currentUser) {
         toast({
@@ -729,58 +772,8 @@ export default function TenantDashboard() {
 
       const userIds = chatUserIdsData.data.user_ids
       
-      // 由于后端可能没有提供获取用户信息的API，我们使用简化的方法
-      // 或者从租约信息中获取房东信息作为备选方案
-      let chatUsersWithDetails: Array<{id: number, username: string}> = []
-      
-      // 尝试从租约信息中获取房东信息
-      try {
-        const leasesResponse = await fetch('http://localhost:5001/api/v1/leases?status=active', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        })
-        
-        if (leasesResponse.ok) {
-          const leasesData = await leasesResponse.json()
-          if (leasesData.success && leasesData.data && leasesData.data.items) {
-            const landlordMap = new Map<number, {id: number, username: string}>()
-            leasesData.data.items.forEach((lease: any) => {
-              if (lease.landlord_info) {
-                landlordMap.set(lease.landlord_info.id, {
-                  id: lease.landlord_info.id,
-                  username: lease.landlord_info.username
-                })
-              }
-            })
-            
-            // 将聊天用户ID与房东信息匹配
-            userIds.forEach((userId: number) => {
-              if (landlordMap.has(userId)) {
-                const userInfo = landlordMap.get(userId)
-                if (userInfo) {
-                  chatUsersWithDetails.push(userInfo)
-                }
-              } else {
-                // 如果没有找到房东信息，使用默认显示
-                chatUsersWithDetails.push({
-                  id: userId,
-                  username: `用户${userId}`
-                })
-              }
-            })
-          }
-        }
-      } catch (error) {
-        console.error('获取租约信息失败，使用默认用户显示:', error)
-        // 如果获取租约信息失败，使用默认显示
-        userIds.forEach((userId: number) => {
-          chatUsersWithDetails.push({
-            id: userId,
-            username: `用户${userId}`
-          })
-        })
-      }
+      // 使用批量获取用户信息函数
+      const chatUsersWithDetails = await fetchUsersInfo(userIds, token)
       
       console.log('最终的聊天用户列表:', chatUsersWithDetails)
       setChatUsers(chatUsersWithDetails)
@@ -798,6 +791,8 @@ export default function TenantDashboard() {
         variant: "destructive"
       })
       setChatUsers([])
+    } finally {
+      setIsLoadingChatUsers(false)
     }
   }
 
@@ -1517,12 +1512,16 @@ export default function TenantDashboard() {
                   <CardDescription>您的聊天对象</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {chatUsers.length > 0 ? (
+                  {isLoadingChatUsers ? (
+                    <div className="flex justify-center py-4">
+                      <Loader2 className="w-6 h-6 animate-spin" />
+                    </div>
+                  ) : chatUsers.length > 0 ? (
                     <div className="space-y-2">
                       {chatUsers.map((user) => (
                         <div
                           key={user.id}
-                          className={`p-3 rounded-lg cursor-pointer hover:bg-gray-100 ${
+                          className={`p-3 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors ${
                             selectedChatUser === user.id ? 'bg-gray-100' : ''
                           }`}
                           onClick={() => {
