@@ -1,85 +1,47 @@
-import { API_CONFIG, getAuthToken } from './config'
+import axios from 'axios'
 
-class ApiError extends Error {
-  constructor(
-    public status: number,
-    public message: string,
-    public data?: any
-  ) {
-    super(message)
-    this.name = 'ApiError'
+const baseURL = 'http://localhost:5001/api/v1'
+
+export const api = axios.create({
+  baseURL,
+  headers: {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json'
   }
-}
+})
 
-async function handleResponse(response: Response) {
-  console.log('API响应状态:', response.status)
-  const data = await response.json()
-  console.log('API响应数据:', data)
-
-  if (!response.ok) {
-    throw new ApiError(
-      response.status,
-      data.message || 'Something went wrong',
-      data
-    )
-  }
-
-  return data
-}
-
-export async function apiClient<T>(
-  endpoint: string,
-  { body, ...customConfig }: RequestInit = {}
-): Promise<T> {
-  const token = getAuthToken()
-  console.log('API请求端点:', endpoint)
-  console.log('认证token:', token ? '存在' : '不存在')
-
-  const headers = {
-    ...API_CONFIG.headers,
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...customConfig.headers,
-  }
-  console.log('请求头:', headers)
-
-  const config: RequestInit = {
-    method: body ? 'POST' : 'GET',
-    ...customConfig,
-    headers,
-    mode: 'cors',
-  }
-
-  if (body) {
-    config.body = JSON.stringify(body)
-    console.log('请求体:', body)
-  }
-
-  try {
-    const url = `${API_CONFIG.baseURL}${endpoint}`
-    console.log('完整请求URL:', url)
-    console.log('请求配置:', config)
-
-    const response = await fetch(url, config)
-    return handleResponse(response)
-  } catch (error) {
-    console.error('API请求错误:', error)
-    if (error instanceof ApiError) {
-      throw error
+// Request interceptor
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('auth_token')
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
     }
-    throw new ApiError(500, 'Network error')
+    return config
+  },
+  (error) => {
+    return Promise.reject(error)
   }
-}
+)
 
-export const api = {
-  get: <T>(endpoint: string, config?: RequestInit) =>
-    apiClient<T>(endpoint, { ...config, method: 'GET' }),
-
-  post: <T>(endpoint: string, data?: any, config?: RequestInit) =>
-    apiClient<T>(endpoint, { ...config, method: 'POST', body: data }),
-
-  put: <T>(endpoint: string, data?: any, config?: RequestInit) =>
-    apiClient<T>(endpoint, { ...config, method: 'PUT', body: data }),
-
-  delete: <T>(endpoint: string, config?: RequestInit) =>
-    apiClient<T>(endpoint, { ...config, method: 'DELETE' }),
-} 
+// Response interceptor
+api.interceptors.response.use(
+  (response) => {
+    return response
+  },
+  (error) => {
+    if (error.response) {
+      // Server returned an error response
+      console.error('API response error:', error.response.status, error.response.data)
+      return Promise.reject(error.response.data)
+    } else if (error.request) {
+      // Request failed
+      console.error('API request error:', error.request)
+      return Promise.reject(new Error('Network error'))
+    } else {
+      // Other errors
+      console.error('API error:', error.message)
+      return Promise.reject(error)
+    }
+  }
+) 

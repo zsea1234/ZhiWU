@@ -1,5 +1,6 @@
 import { api } from './client'
-import { setAuthToken, setAuthUser, removeAuthToken, removeAuthUser } from './config'
+import { setAuthToken, setAuthUser, removeAuthToken, removeAuthUser, getAuthToken } from './config'
+import { UserData, ApiResponse } from '@/app/types/api'
 
 export interface LoginInput {
   username_or_email: string
@@ -36,29 +37,37 @@ export interface AuthResponse {
 export const authApi = {
   login: async (data: LoginInput): Promise<AuthResponse> => {
     const response = await api.post<AuthResponse>('/auth/login', data)
-    setAuthToken(response.access_token)
-    setAuthUser(response.user)
-    return response
+    setAuthToken(response.data.access_token)
+    setAuthUser(response.data.user)
+    return response.data
   },
 
   register: async (data: RegisterInput): Promise<AuthResponse> => {
     const response = await api.post<AuthResponse>('/auth/register', data)
-    setAuthToken(response.access_token)
-    setAuthUser(response.user)
-    return response
+    setAuthToken(response.data.access_token)
+    setAuthUser(response.data.user)
+    return response.data
   },
 
   logout: async (): Promise<void> => {
+    const token = getAuthToken()
+    if (!token) {
+      console.warn('No auth token found during logout')
+      return
+    }
+
     try {
-      await api.post('/auth/logout')
+      await api.post('/auth/logout', null)
     } finally {
       removeAuthToken()
       removeAuthUser()
+      localStorage.removeItem('user_role')
+      localStorage.removeItem('user_info')
     }
   },
 
   getCurrentUser: async () => {
-    return api.get('/users/me')
+    return api.get<ApiResponse<UserData>>('/users/me')
   },
 
   updateProfile: async (data: {
@@ -68,7 +77,7 @@ export const authApi = {
     new_password?: string
     enable_mfa?: boolean
   }) => {
-    return api.put('/users/me', data)
+    return api.put<ApiResponse<UserData>>('/users/me', data)
   },
 
   setupMFA: async () => {

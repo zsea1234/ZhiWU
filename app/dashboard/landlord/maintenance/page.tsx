@@ -56,19 +56,28 @@ export default function MaintenancePage() {
       const response = await maintenanceApi.list(params)
       console.log('API响应:', response)
 
-      if (!response || !response.data) {
+      if (!response || !response.data || !response.data.data) {
         console.error('API响应格式错误:', response)
         toast.error('获取维修请求列表失败：响应格式错误')
         return
       }
 
-      console.log('维修请求数量：', response.data.length)
-      console.log('总页数：', response.meta.last_page)
-      console.log('当前页：', response.meta.current_page)
-      console.log('响应数据示例：', response.data[0])
+      const maintenanceRequests = response.data.data.items; // Accessing the array from response.data.data.items
+      const totalPages = response.data.data.total_pages; // Accessing total_pages from response.data.data
 
-      setRequests(response.data)
-      setTotalPages(response.meta.last_page)
+      if (!maintenanceRequests || totalPages === undefined) {
+        console.error('API响应数据结构错误:', response.data.data);
+        toast.error('获取维修请求列表失败：数据结构错误');
+        return;
+      }
+
+      console.log('维修请求数量：', maintenanceRequests.length);
+      console.log('总页数：', totalPages);
+      console.log('当前页：', response.data.data.page);
+      console.log('响应数据示例：', maintenanceRequests.length > 0 ? maintenanceRequests[0] : '无数据');
+
+      setRequests(maintenanceRequests);
+      setTotalPages(totalPages);
     } catch (error) {
       console.error('获取维修请求列表失败:', error)
       toast.error('获取维修请求列表失败：' + (error instanceof Error ? error.message : '未知错误'))
@@ -85,19 +94,19 @@ export default function MaintenancePage() {
       
       switch (newStatus) {
         case 'assigned_to_worker':
-          updatedRequest = await maintenanceApi.assignWorker(id, '维修工人', '13800138000')
+          updatedRequest = (await maintenanceApi.assignWorker(id, '维修工人', '13800138000')).data
           break
         case 'in_progress':
-          updatedRequest = await maintenanceApi.startWork(id)
+          updatedRequest = (await maintenanceApi.startWork(id)).data
           break
         case 'completed':
-          updatedRequest = await maintenanceApi.complete(id)
+          updatedRequest = (await maintenanceApi.complete(id)).data
           break
         case 'closed_by_landlord':
-          updatedRequest = await maintenanceApi.close(id)
+          updatedRequest = (await maintenanceApi.close(id)).data
           break
         default:
-          updatedRequest = await maintenanceApi.update(id, { status: newStatus })
+          updatedRequest = (await maintenanceApi.update(id, { status: newStatus })).data
       }
       
       console.log('维修请求状态更新成功：', updatedRequest)
@@ -354,5 +363,4 @@ export default function MaintenancePage() {
       )}
     </div>
   )
-} 
 } 

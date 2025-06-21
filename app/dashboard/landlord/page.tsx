@@ -23,6 +23,7 @@ import {
   Loader2,
   Wrench,
   Check,
+  LogOut,
 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -34,6 +35,7 @@ import type { Property } from '../../types/property'
 import { propertyApi } from '../../services/api/properties'
 import { useToast } from "@/components/ui/use-toast"
 import { maintenanceApi, MaintenanceType } from "@/app/services/api/maintenance"
+import { authApi } from "@/app/services/api/auth"
 
 interface Message {
   id: number
@@ -149,6 +151,28 @@ interface EditLeaseDialog {
   lease: LeaseInfo | null;
 }
 
+interface PropertyData {
+  id: number;
+  title: string;
+  description: string | null;
+  address_line1: string;
+  address_line2: string | null;
+  city: string;
+  district: string;
+  postal_code: string | null;
+  property_type: string;
+  area_sqm: number;
+  bedrooms: number;
+  bathrooms: number;
+  rent_price_monthly: number;
+  deposit_amount: number;
+  status: 'vacant' | 'rented' | 'maintenance';
+  main_image_url: string | null;
+  amenities: string[];
+  created_at: string;
+  updated_at: string;
+}
+
 export default function LandlordDashboard() {
   const router = useRouter()
   const { toast } = useToast()
@@ -163,7 +187,7 @@ export default function LandlordDashboard() {
     tenant: "",
     property: ""
   })
-  const [properties, setProperties] = useState<Property[]>([])
+  const [properties, setProperties] = useState<PropertyData[]>([])
   const [loading, setLoading] = useState(true)
   const [deleteDialog, setDeleteDialog] = useState<DeleteDialog>({
     isOpen: false,
@@ -200,14 +224,13 @@ export default function LandlordDashboard() {
     additional_terms: '',
     payment_due_day_of_month: 1,
     status: 'draft' as 'draft' | 'pending_tenant_signature' | 'pending_landlord_signature' | 'active' | 'expired' | 'terminated_early' | 'payment_due'
-  });
+  })
   const [requests, setRequests] = useState<MaintenanceType[]>([])
   const [maintenanceLoading, setMaintenanceLoading] = useState(true)
-  const [totalPages, setTotalPages] = useState(1)
   const [messages, setMessages] = useState<Message[]>([])
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
   const [selectedChatUserId, setSelectedChatUserId] = useState<number | null>(null)
-  const [isLoadingMessages, setIsLoadingMessages] = useState(false)
 
   useEffect(() => {
     // 从localStorage获取用户信息
@@ -834,18 +857,18 @@ export default function LandlordDashboard() {
       console.log('API响应:', response);
       
       // 检查响应格式
-      if (!response?.data?.items) {
+      if (!response?.data?.data?.items) {
         console.error('API响应格式不正确:', response);
         throw new Error('获取维修请求列表失败')
       }
 
       // 设置维修请求列表
-      setRequests(response.data.items)
+      setRequests(response.data.data.items)
       
       // 显示成功消息
       toast({
         title: "Success",
-        description: `获取到 ${response.data.items.length} 条维修请求`
+        description: `获取到 ${response.data.data.items.length} 条维修请求`
       })
 
     } catch (error) {
@@ -1184,6 +1207,15 @@ export default function LandlordDashboard() {
     console.log('=== 完成获取所有消息 ===');
   };
 
+  const handleLogout = async () => {
+    try {
+      await authApi.logout()
+      router.push("/auth/login")
+    } catch (error) {
+      console.error("Logout failed:", error)
+    }
+  }
+
   if (!user) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -1214,6 +1246,10 @@ export default function LandlordDashboard() {
                 设置
               </Button>
             </Link>
+            <Button variant="outline" size="sm" onClick={handleLogout}>
+              <LogOut className="h-4 w-4 mr-2" />
+              登出
+            </Button>
           </div>
         </div>
       </header>
@@ -1391,6 +1427,10 @@ export default function LandlordDashboard() {
                           src={property.main_image_url || "/placeholder.svg"}
                           alt={property.title}
                           className="w-full h-full object-cover"
+                          onError={(e) => {
+                            const target = e.target as HTMLImageElement;
+                            target.src = "/placeholder.svg";
+                          }}
                         />
                         <Badge
                           variant={
