@@ -40,7 +40,6 @@ interface SearchFilters {
   max_rent: number
   min_area: number
   max_area: number
-  bedrooms: number
   city: string
 }
 
@@ -57,7 +56,6 @@ export default function PropertiesPage() {
     max_rent: 10000,
     min_area: 0,
     max_area: 200,
-    bedrooms: 0,
     city: ''
   })
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null)
@@ -102,10 +100,6 @@ export default function PropertiesPage() {
             queryParams.append(paramName, value.toString())
             console.log(`Adding numeric filter ${paramName}:`, value)
           }
-        } else if (key === 'bedrooms' && value > 0) {
-          // 卧室数量作为独立参数
-          queryParams.append('bedrooms', value.toString())
-          console.log('Adding bedrooms filter:', value)
         } else if (value && value !== '' && value !== 'ALL') {
           queryParams.append(key, value.toString())
           console.log(`Adding text filter ${key}:`, value)
@@ -159,7 +153,7 @@ export default function PropertiesPage() {
   const handleFilterChange = (key: keyof SearchFilters, value: any) => {
     console.log(`Updating filter ${key} from ${filters[key]} to:`, value)
     // 对于数字类型的筛选条件，确保转换为数字
-    if (['min_rent', 'max_rent', 'min_area', 'max_area', 'bedrooms'].includes(key)) {
+    if (['min_rent', 'max_rent', 'min_area', 'max_area'].includes(key)) {
       value = value === '0' || value === 0 ? 0 : Number(value)
       console.log(`Converted ${key} to number:`, value)
     }
@@ -217,7 +211,6 @@ export default function PropertiesPage() {
       max_rent: 10000,
       min_area: 0,
       max_area: 200,
-      bedrooms: 0,
       city: ''
     })
     setShowFilters(false)
@@ -310,7 +303,7 @@ export default function PropertiesPage() {
             </div>
 
             {showFilters && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">房屋类型</label>
                   <Select
@@ -345,25 +338,6 @@ export default function PropertiesPage() {
                       <SelectItem value="上海">上海</SelectItem>
                       <SelectItem value="广州">广州</SelectItem>
                       <SelectItem value="深圳">深圳</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">卧室数量</label>
-                  <Select
-                    value={filters.bedrooms.toString()}
-                    onValueChange={(value) => handleFilterChange('bedrooms', value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="选择卧室数量" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="0">不限</SelectItem>
-                      <SelectItem value="1">1室</SelectItem>
-                      <SelectItem value="2">2室</SelectItem>
-                      <SelectItem value="3">3室</SelectItem>
-                      <SelectItem value="4">4室及以上</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

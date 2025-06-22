@@ -205,6 +205,8 @@ export default function TenantDashboard() {
     additional_terms: '',
     payment_due_day_of_month: 1
   })
+  // 添加维修申请弹窗状态
+  const [newMaintenanceDialogOpen, setNewMaintenanceDialogOpen] = useState(false)
 
   // 统计数据
   const stats = {
@@ -256,7 +258,8 @@ export default function TenantDashboard() {
 
       console.log('Fetching bookings with token:', token)
       
-      const response = await fetch('http://localhost:5001/api/v1/bookings/tenant', {
+      // 尝试获取所有预约数据，设置较大的page_size
+      const response = await fetch('http://localhost:5001/api/v1/bookings/tenant?page_size=100', {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -274,6 +277,7 @@ export default function TenantDashboard() {
       
       const data = await response.json()
       console.log('Bookings response data:', data)
+      console.log('Total bookings count:', data.data?.items?.length || 0)
       
       if (data.success && data.data && data.data.items) {
         const formattedBookings = data.data.items.map((booking: any) => ({
@@ -281,6 +285,7 @@ export default function TenantDashboard() {
           status: booking.status.toUpperCase()
         }))
         console.log('Formatted bookings:', formattedBookings)
+        console.log('Formatted bookings count:', formattedBookings.length)
         setBookings(formattedBookings)
       } else {
         console.error('Invalid data format:', data)
@@ -371,6 +376,15 @@ export default function TenantDashboard() {
       console.log('API返回数据:', data)
       
       if (data.success && data.data && data.data.items) {
+        // 添加调试信息，查看每个维修申请的状态
+        data.data.items.forEach((request: any, index: number) => {
+          console.log(`维修申请 ${index + 1}:`, {
+            id: request.id,
+            status: request.status,
+            description: request.description
+          })
+        })
+        
         setMaintenanceRequests(data.data.items)
       } else {
         console.error('无效的数据格式:', data)
@@ -639,11 +653,18 @@ export default function TenantDashboard() {
         title: "成功",
         description: "维修申请已提交"
       })
+      
+      // 重置表单数据
       setNewMaintenanceRequest({
         property_id: 0,
         description: '',
         preferred_contact_time: ''
       })
+      
+      // 关闭弹窗
+      setNewMaintenanceDialogOpen(false)
+      
+      // 刷新维修申请列表
       fetchMaintenanceRequests()
     } catch (error) {
       console.error('提交维修申请错误:', error)
@@ -728,8 +749,7 @@ export default function TenantDashboard() {
         monthly_rent_amount: parseFloat(newLeaseData.monthly_rent_amount),
         deposit_amount: parseFloat(newLeaseData.deposit_amount) || parseFloat(newLeaseData.monthly_rent_amount),
         additional_terms: newLeaseData.additional_terms || null,
-        payment_due_day_of_month: newLeaseData.payment_due_day_of_month,
-        status: 'pending_landlord_signature' // 明确设置为待房东签署状态
+        payment_due_day_of_month: newLeaseData.payment_due_day_of_month
       }
 
       console.log('创建租赁合同数据:', leaseData)
@@ -781,17 +801,85 @@ export default function TenantDashboard() {
   }
 
   const getMaintenanceStatusBadge = (status: string) => {
+    // 添加调试信息
+    console.log('维修申请状态:', status)
+    
     const statusMap: Record<string, { label: string; variant: string }> = {
+      // 大写版本
       'PENDING_ASSIGNMENT': { label: '待分配', variant: 'warning' },
       'ASSIGNED_TO_WORKER': { label: '已分配', variant: 'info' },
       'IN_PROGRESS': { label: '处理中', variant: 'info' },
       'COMPLETED': { label: '已完成', variant: 'success' },
       'CANCELLED_BY_TENANT': { label: '已取消', variant: 'destructive' },
-      'CLOSED_BY_LANDLORD': { label: '已关闭', variant: 'secondary' }
+      'CLOSED_BY_LANDLORD': { label: '已关闭', variant: 'secondary' },
+      
+      // 小写版本（以防后端返回小写）
+      'pending_assignment': { label: '待分配', variant: 'warning' },
+      'assigned_to_worker': { label: '已分配', variant: 'info' },
+      'in_progress': { label: '处理中', variant: 'info' },
+      'completed': { label: '已完成', variant: 'success' },
+      'cancelled_by_tenant': { label: '已取消', variant: 'destructive' },
+      'closed_by_landlord': { label: '已关闭', variant: 'secondary' },
+      
+      // 其他可能的变体
+      'pending': { label: '待处理', variant: 'warning' },
+      'assigned': { label: '已分配', variant: 'info' },
+      'progress': { label: '处理中', variant: 'info' },
+      'cancelled': { label: '已取消', variant: 'destructive' },
+      'closed': { label: '已关闭', variant: 'secondary' }
+    }
+
+    const statusInfo = statusMap[status] || { label: `未知状态(${status})`, variant: 'secondary' }
+    return <Badge variant={statusInfo.variant as any}>{statusInfo.label}</Badge>
+  }
+
+  // 获取租赁合同状态的中文显示
+  const getLeaseStatusBadge = (status: string) => {
+    const statusMap: Record<string, { label: string; variant: string }> = {
+      'draft': { label: '草稿', variant: 'secondary' },
+      'pending_tenant_signature': { label: '等待房东签署', variant: 'warning' },
+      'pending_landlord_signature': { label: '等待房东签署', variant: 'warning' },
+      'active': { label: '合同生效', variant: 'success' },
+      'expired': { label: '已过期', variant: 'destructive' },
+      'terminated_early': { label: '提前终止', variant: 'destructive' },
+      'payment_due': { label: '租金到期', variant: 'warning' }
     }
 
     const statusInfo = statusMap[status] || { label: '未知状态', variant: 'secondary' }
     return <Badge variant={statusInfo.variant as any}>{statusInfo.label}</Badge>
+  }
+
+  // 检查是否已经发起过合同
+  const hasExistingLease = (propertyId: number) => {
+    return leases.some(lease => 
+      lease.property_id === propertyId && 
+      ['draft', 'pending_tenant_signature', 'pending_landlord_signature', 'active'].includes(lease.status)
+    )
+  }
+
+  // 获取发起合同按钮的文本和状态
+  const getCreateLeaseButtonInfo = (propertyId: number) => {
+    const existingLease = leases.find(lease => 
+      lease.property_id === propertyId && 
+      ['draft', 'pending_tenant_signature', 'pending_landlord_signature', 'active'].includes(lease.status)
+    )
+    
+    if (!existingLease) {
+      return { text: '发起合同', disabled: false, variant: 'default' as const }
+    }
+    
+    switch (existingLease.status) {
+      case 'draft':
+        return { text: '草稿中', disabled: true, variant: 'secondary' as const }
+      case 'pending_tenant_signature':
+        return { text: '等待签署', disabled: true, variant: 'secondary' as const }
+      case 'pending_landlord_signature':
+        return { text: '等待房东签署', disabled: true, variant: 'secondary' as const }
+      case 'active':
+        return { text: '合同生效', disabled: true, variant: 'secondary' as const }
+      default:
+        return { text: '发起合同', disabled: false, variant: 'default' as const }
+    }
   }
 
   // 批量获取用户信息
@@ -1277,6 +1365,10 @@ export default function TenantDashboard() {
               </div>
             ) : (
               <div className="grid gap-4">
+                {/* 添加调试信息显示 */}
+                <div className="text-sm text-gray-500 mb-2">
+                  共找到 {bookings.length} 条预约记录
+                </div>
                 {bookings.map((booking) => (
                   <Card key={booking.booking_id}>
                     <CardHeader>
@@ -1326,23 +1418,24 @@ export default function TenantDashboard() {
                               查看房源
                             </Button>
                             {booking.status === 'CONFIRMED_BY_LANDLORD' && (
-                              <Button
-                                variant="default"
-                                onClick={() => {
-                                  setSelectedBookingForLease(booking)
-                                  setCreateLeaseDialogOpen(true)
-                                }}
-                                disabled={leases.some(lease => 
-                                  lease.property_id === booking.property_id && 
-                                  lease.status === 'pending_landlord_signature'
-                                )}
-                              >
-                                <FileText className="w-4 h-4 mr-2" />
-                                {leases.some(lease => 
-                                  lease.property_id === booking.property_id && 
-                                  lease.status === 'pending_landlord_signature'
-                                ) ? '已发起合同' : '发起合同'}
-                              </Button>
+                              (() => {
+                                const buttonInfo = getCreateLeaseButtonInfo(booking.property_id)
+                                return (
+                                  <Button
+                                    variant={buttonInfo.variant}
+                                    onClick={() => {
+                                      if (!buttonInfo.disabled) {
+                                        setSelectedBookingForLease(booking)
+                                        setCreateLeaseDialogOpen(true)
+                                      }
+                                    }}
+                                    disabled={buttonInfo.disabled}
+                                  >
+                                    <FileText className="w-4 h-4 mr-2" />
+                                    {buttonInfo.text}
+                                  </Button>
+                                )
+                              })()
                             )}
                             {(booking.status === 'PENDING_CONFIRMATION' || booking.status === 'CONFIRMED_BY_LANDLORD') && (
                               <Button
@@ -1388,7 +1481,10 @@ export default function TenantDashboard() {
                         <div>
                           <p>租期：{lease.start_date} 至 {lease.end_date}</p>
                           <p>月租金：¥{lease.monthly_rent_amount}</p>
-                          <p>状态：{lease.status}</p>
+                          <div className="flex items-center gap-2">
+                            <span>状态：</span>
+                            {getLeaseStatusBadge(lease.status)}
+                          </div>
                         </div>
                         <div className="space-x-2">
                           {lease.contract_document_url && (
@@ -1398,16 +1494,6 @@ export default function TenantDashboard() {
                             >
                               查看合同
                             </Button>
-                          )}
-                          {lease.status === 'pending_landlord_signature' && (
-                            <Badge variant="secondary">
-                              等待房东签署
-                            </Badge>
-                          )}
-                          {lease.status === 'active' && (
-                            <Badge variant="default">
-                              合同生效
-                            </Badge>
                           )}
                         </div>
                       </div>
@@ -1421,7 +1507,7 @@ export default function TenantDashboard() {
           <TabsContent value="maintenance" className="space-y-4">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-semibold">维修申请</h2>
-              <Dialog>
+              <Dialog open={newMaintenanceDialogOpen} onOpenChange={setNewMaintenanceDialogOpen}>
                 <DialogTrigger asChild>
                   <Button>
                     <Plus className="w-4 h-4 mr-2" />
@@ -1516,12 +1602,6 @@ export default function TenantDashboard() {
                           <p className="text-sm font-medium">问题描述</p>
                           <p className="text-sm text-gray-500">{request.description}</p>
                         </div>
-                        <div>
-                          <p className="text-sm font-medium">提交时间</p>
-                          <p className="text-sm text-gray-500">
-                            {new Date(request.created_at).toLocaleString()}
-                          </p>
-                        </div>
                         {request.assigned_worker_name && (
                           <div>
                             <p className="text-sm font-medium">维修人员</p>
@@ -1586,13 +1666,7 @@ export default function TenantDashboard() {
                     </div>
                     <div>
                       <h3 className="font-medium">申请状态</h3>
-                      <p className="text-sm text-gray-500">{getMaintenanceStatusBadge(selectedMaintenanceRequest.status)}</p>
-                    </div>
-                    <div>
-                      <h3 className="font-medium">提交时间</h3>
-                      <p className="text-sm text-gray-500">
-                        {new Date(selectedMaintenanceRequest.created_at).toLocaleString()}
-                      </p>
+                      <div className="text-sm text-gray-500">{getMaintenanceStatusBadge(selectedMaintenanceRequest.status)}</div>
                     </div>
                     {selectedMaintenanceRequest.assigned_worker_name && (
                       <div>
